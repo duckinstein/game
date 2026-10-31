@@ -10,7 +10,7 @@ function loadVillainSheet(path, cols, rows) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
-      if (image.naturalWidth % cols !== 0 || image.naturalHeight % rows !== 0) {
+      if (image.naturalWidth === 0 || image.naturalHeight === 0) {
         reject(new Error(`Villain spritesheet has invalid dimensions: ${path}`));
         return;
       }
