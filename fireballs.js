@@ -7,7 +7,8 @@ import { getTileElevation, isCliff } from './world.js';
 const FIREBALL_SPEED = 8;
 const FIREBALL_DAMAGE = 20;
 const FIREBALL_RADIUS = 0.18;
-export const FIREBALL_MANA_COST = 25;
+const FIREBALL_SIZE = 1.9;
+export const FIREBALL_MANA_COST = 0.5;
 const FIREBALL_DIRECTIONS = {
   [DIR.DOWN]: { x: 0, y: 1 },
   [DIR.LEFT]: { x: -1, y: 0 },
@@ -40,6 +41,7 @@ export function launchFireball(actor, owner = "player") {
     dirX: direction.x,
     dirY: direction.y,
     owner,
+    age: 0,
     elevation: getTileElevation(Math.round(actor.currentX), Math.round(actor.currentY)),
     removed: false
   });
@@ -101,6 +103,7 @@ export function updateFireballs(dt, player) {
       if (fireball.removed) continue;
       fireball.x += fireball.dirX * stepDistance;
       fireball.y += fireball.dirY * stepDistance;
+      fireball.age += dt / steps;
     }
 
     for (let i = 0; i < fireballs.length; i++) {
@@ -125,7 +128,7 @@ export function updateFireballs(dt, player) {
         continue;
       }
 
-      const damage = FIREBALL_DAMAGE;
+      const damage = fireball.owner === "player" ? FIREBALL_DAMAGE * 2 : FIREBALL_DAMAGE;
       const object = getMapObjectAtWorld(fireball.x, fireball.y, FIREBALL_RADIUS);
       const objectHit = Boolean(object &&
         getTileElevation(object.tx, object.ty) === fireball.elevation &&
@@ -154,17 +157,44 @@ export function updateFireballs(dt, player) {
 }
 
 export function drawFireballVisuals(ctx) {
-  const width = globals.tile * 1.25;
+  const width = globals.tile * FIREBALL_SIZE;
   const height = width / 2;
 
   for (const fireball of fireballs) {
     if (!fireballImage.complete || fireballImage.naturalWidth === 0) continue;
     const x = fireball.x * globals.tile - globals.cameraX;
     const y = (fireball.y - fireball.elevation * 0.6) * globals.tile - globals.cameraY;
+    const phase = fireball.age * 24;
+    const pulse = 0.92 + 0.12 * Math.sin(phase);
+    const flicker = 0.82 + 0.18 * Math.sin(phase * 1.7);
+    const enemyShot = fireball.owner === "enemy";
+    const glowColor = enemyShot ? "157, 91, 220" : "255, 104, 24";
+
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.atan2(fireball.dirY, fireball.dirX));
-    ctx.drawImage(fireballImage, -width / 2, -height / 2, width, height);
+    ctx.globalAlpha = flicker;
+    ctx.globalCompositeOperation = "lighter";
+    const glow = ctx.createRadialGradient(0, 0, width * 0.06, 0, 0, width * 0.72);
+    glow.addColorStop(0, `rgba(${glowColor}, 0.7)`);
+    glow.addColorStop(0.35, `rgba(${glowColor}, 0.34)`);
+    glow.addColorStop(1, `rgba(${glowColor}, 0)`);
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, width * 0.72, height * 1.65, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.shadowColor = enemyShot ? "#a764e8" : "#ff742b";
+    ctx.shadowBlur = globals.tile * (0.8 + 0.35 * (1 + Math.sin(phase)));
+    if (enemyShot) ctx.filter = "hue-rotate(260deg) saturate(1.8) brightness(1.08)";
+    ctx.drawImage(
+      fireballImage,
+      -width * pulse / 2,
+      -height * pulse / 2,
+      width * pulse,
+      height * pulse
+    );
     ctx.restore();
   }
 }

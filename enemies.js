@@ -2,6 +2,7 @@ import { globals, DIR, tryLoadImage } from './globals.js';
 import { getTileElevation, isCliff, isWaterTile } from './world.js';
 import { canStep, consumeBerryAt, damageMapObjectAt, getMapObjectAt, particles, setEnemySolidChecker } from './props.js';
 import { takePlayerDamage, addPlayerXP } from './player.js';
+import { canFireballReach } from './fireballs.js';
 import { drawEnemyHealthBar } from './ui.js';
 
 function loadVillainSheet(paths, cols = 4, rows = 4) {
@@ -20,7 +21,9 @@ export const villainAttack = loadVillainSheet(["./villain/1_attack.png", "./1_at
 export const villainDie = loadVillainSheet(["./villain/1_die.png", "./1_die.png"], 4, 1);
 
 const MAX_ENEMIES = 5;
-const AGGRO_RANGE = 6.0;
+const AGGRO_RANGE = 9.0;
+const RANGED_RANGE = 7.0;
+const GUARD_RADIUS = 4;
 const STEP_SPEED = 0.32;
 const ATTACK_FRAME_TIME = 110;
 const DIE_FRAME_TIME = 180;
@@ -102,6 +105,71 @@ function findBerryTarget(enemy) {
   return closest;
 }
 
+function findRangedPositionDirection(enemy, player) {
+  const candidates = [];
+  for (const vector of DIR_VECTORS) {
+    for (let distance = 2; distance <= RANGED_RANGE; distance++) {
+      const x = player.tileX + vector.x * distance;
+      const y = player.tileY + vector.y * distance;
+      if (getTileElevation(x, y) !== getTileElevation(player.tileX, player.tileY) ||
+          isSolidEnemyAt(x, y) ||
+          !canFireballReach(x + 0.5, y + 0.5, player.currentX + 0.5, player.currentY + 0.5)) {
+        continue;
+      }
+      candidates.push({ x, y, distance: Math.abs(x - enemy.tileX) + Math.abs(y - enemy.tileY) });
+    }
+  }
+
+  candidates.sort((a, b) => a.distance - b.distance);
+  for (const candidate of candidates) {
+    const direction = findNextPathDirection(enemy, candidate.x, candidate.y, player);
+    if (direction !== null) return direction;
+  }
+  return null;
+}
+
+function startEnemyStep(enemy, direction, state) {
+  if (direction === null) return false;
+  const vector = DIR_VECTORS[direction];
+  const targetX = enemy.tileX + vector.x;
+  const targetY = enemy.tileY + vector.y;
+  if (isSolidEnemyAt(targetX, targetY) || !canStep(enemy.tileX, enemy.tileY, targetX, targetY, false)) return false;
+  enemy.state = state;
+  enemy.dir = vector.dir;
+  enemy.targetX = targetX;
+  enemy.targetY = targetY;
+  enemy.isMoving = true;
+  enemy.moveProgress = 0;
+  return true;
+}
+
+function patrolEnemy(enemy, player, dt) {
+  const homeDistance = Math.abs(enemy.tileX - enemy.guardX) + Math.abs(enemy.tileY - enemy.guardY);
+  if (homeDistance > GUARD_RADIUS) {
+    const direction = findNextPathDirection(enemy, enemy.guardX, enemy.guardY, player);
+    if (startEnemyStep(enemy, direction, "PATROL")) return;
+  }
+
+  enemy.patrolTimer -= dt;
+  if (enemy.patrolTimer > 0) return;
+  enemy.patrolTimer = 1.2 + Math.random() * 2.4;
+
+  const options = DIR_VECTORS
+    .map((vector, dir) => ({ vector, dir, x: enemy.tileX + vector.x, y: enemy.tileY + vector.y }))
+    .filter(option =>
+      Math.abs(option.x - enemy.guardX) + Math.abs(option.y - enemy.guardY) <= GUARD_RADIUS &&
+      !isSolidEnemyAt(option.x, option.y) &&
+      canStep(enemy.tileX, enemy.tileY, option.x, option.y, false)
+    );
+  if (options.length === 0 || Math.random() < 0.35) {
+    enemy.state = "IDLE";
+    return;
+  }
+
+  const option = options[Math.floor(Math.random() * options.length)];
+  startEnemyStep(enemy, option.dir, "PATROL");
+}
+
 function tryEatEnemyBerry(enemy) {
   if (enemy.hp >= enemy.maxHp) return false;
   if (!consumeBerryAt(enemy.tileX, enemy.tileY)) return false;
@@ -145,6 +213,9 @@ export function createEnemy(tx, ty) {
     dieFrame: 0,
     dieClock: 0,
     corpseTimer: CORPSE_LINGER_TIME,
+    guardX: tx,
+    guardY: ty,
+    patrolTimer: 0.8 + Math.random() * 2,
     active: true
   };
 }
@@ -159,7 +230,7 @@ export function initEnemies(player) {
 function spawnEnemyAround(player) {
   for (let attempts = 0; attempts < 40; attempts++) {
     const angle = Math.random() * Math.PI * 2;
-    const dist = 6 + Math.random() * 8;
+    const dist = 4 + Math.random() * 2;
     const tx = Math.round((player ? player.tileX : 0) + Math.cos(angle) * dist);
     const ty = Math.round((player ? player.tileY : 0) + Math.sin(angle) * dist);
 
@@ -250,6 +321,7 @@ export function updateEnemies(dt, player, tryRangedAttack) {
         e.moveProgress = 0;
         e.walkFrame = 0;
         tryEatEnemyBerry(e);
+        if (e.state === "PATROL") e.state = "IDLE";
       } else {
         e.currentX = e.tileX + (e.targetX - e.tileX) * e.moveProgress;
         e.currentY = e.tileY + (e.targetY - e.tileY) * e.moveProgress;
@@ -274,6 +346,19 @@ export function updateEnemies(dt, player, tryRangedAttack) {
       e.attackClock = 0;
       e.hasDealtDamage = false;
       continue;
+    }
+
+    if (tryRangedAttack && e.attackCooldown <= 0 && dist > 1.5 && dist <= RANGED_RANGE &&
+        (dx === 0 || dy === 0)) {
+      e.dir = dx > 0 ? DIR.RIGHT : dx < 0 ? DIR.LEFT : dy > 0 ? DIR.DOWN : DIR.UP;
+      if (tryRangedAttack(e)) {
+        e.state = "ATTACK";
+        e.attackFrame = 0;
+        e.attackClock = 0;
+        e.hasDealtDamage = true;
+        e.attackCooldown = 1.5;
+        continue;
+      }
     }
 
     if (e.hp <= e.maxHp * 0.6) {
@@ -322,62 +407,22 @@ export function updateEnemies(dt, player, tryRangedAttack) {
       }
     }
 
-    if (tryRangedAttack && e.attackCooldown <= 0 && dist > 1.5 && dist <= AGGRO_RANGE) {
-      if (dx === 0 || dy === 0) {
-        e.dir = dx > 0 ? DIR.RIGHT : dx < 0 ? DIR.LEFT : dy > 0 ? DIR.DOWN : DIR.UP;
-        if (tryRangedAttack(e)) {
-          e.state = "ATTACK";
-          e.attackFrame = 0;
-          e.attackClock = 0;
-          e.hasDealtDamage = true;
-          e.attackCooldown = 1.5;
-          continue;
-        }
-      }
-    }
-
     if (dist <= AGGRO_RANGE && !e.isMoving) {
-      const leader = enemies
-        .filter(other => other.active && other.state !== "DEAD" && other.state !== "DYING")
-        .sort((a, b) => Math.hypot(a.currentX - player.currentX, a.currentY - player.currentY) -
-                        Math.hypot(b.currentX - player.currentX, b.currentY - player.currentY))[0];
-      let targetX = player.tileX;
-      let targetY = player.tileY;
+      const meleeDistance = Math.abs(dx) + Math.abs(dy);
+      const inMeleeRange = meleeDistance === 1 && sameElevation;
+      if (!inMeleeRange) {
+        const meleeDirection = findNextPathDirection(e, player.tileX, player.tileY, player);
+        if (meleeDirection !== null && startEnemyStep(e, meleeDirection, "CHASE")) continue;
 
-      if (leader && leader !== e && tryRangedAttack) {
-        e.state = "SUPPORT";
-        const rangedPositions = DIR_VECTORS.flatMap(vector => [2, 3].map(distance => ({
-          x: player.tileX + vector.x * distance,
-          y: player.tileY + vector.y * distance
-        }))).filter(position =>
-          getTileElevation(position.x, position.y) === getTileElevation(player.tileX, player.tileY) &&
-          !isSolidEnemyAt(position.x, position.y)
-        );
-        rangedPositions.sort((a, b) =>
-          Math.abs(a.x - e.tileX) + Math.abs(a.y - e.tileY) -
-          (Math.abs(b.x - e.tileX) + Math.abs(b.y - e.tileY))
-        );
-        if (rangedPositions.length > 0) {
-          targetX = rangedPositions[0].x;
-          targetY = rangedPositions[0].y;
+        if (tryRangedAttack && dist > 1.5) {
+          const rangedDirection = findRangedPositionDirection(e, player);
+          if (rangedDirection !== null && startEnemyStep(e, rangedDirection, "SUPPORT")) continue;
         }
-      } else {
-        e.state = "CHASE";
       }
 
-      const direction = findNextPathDirection(e, targetX, targetY, player);
-      const chaseDirection = direction ?? (targetX !== player.tileX || targetY !== player.tileY
-        ? findNextPathDirection(e, player.tileX, player.tileY, player)
-        : null);
-      if (chaseDirection !== null) {
-        e.dir = chaseDirection;
-        e.targetX = e.tileX + DIR_VECTORS[chaseDirection].x;
-        e.targetY = e.tileY + DIR_VECTORS[chaseDirection].y;
-        e.isMoving = true;
-        e.moveProgress = 0;
-      }
-    } else {
       e.state = "IDLE";
+    } else {
+      patrolEnemy(e, player, dt);
     }
   }
 }

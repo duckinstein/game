@@ -20,6 +20,14 @@ export const objectsSheet = {
 };
 
 const changedObjects = new Map();
+const FOOD_OBJECT_TYPES = ["BUSH_BERRY", "MUSHROOM"];
+const SCENERY_OBJECT_TYPES = Object.keys(objectsSheet.types)
+  .filter(type => !FOOD_OBJECT_TYPES.includes(type));
+
+function objectTypeRoll(tx, ty) {
+  const value = Math.sin(tx * 12.9898 + ty * 78.233 + 43.17) * 43758.5453;
+  return value - Math.floor(value);
+}
 
 export const pondDecorSprites = {
   lily: { sx: 128, sy: 64, sw: 16, sh: 16 },
@@ -113,10 +121,12 @@ export function getMapObjectAt(tx, ty) {
   const key = `${tx},${ty}`;
   if (changedObjects.has(key)) return changedObjects.get(key);
 
-  const typeKeys = Object.keys(objectsSheet.types);
   if (rand < 0.04) {
-    const typeIndex = Math.floor((rand * 1000) % typeKeys.length);
-    const typeName = typeKeys[typeIndex];
+    const typeRoll = objectTypeRoll(tx, ty);
+    const foodType = typeRoll < 0.1;
+    const typeKeys = foodType ? FOOD_OBJECT_TYPES : SCENERY_OBJECT_TYPES;
+    const selectionRoll = objectTypeRoll(tx + 137, ty - 251);
+    const typeName = typeKeys[Math.floor(selectionRoll * typeKeys.length)];
     const def = objectsSheet.types[typeName];
     return { name: typeName, def, tx, ty, footY: ty + def.footOffsetY, key };
   }
@@ -277,8 +287,8 @@ export function hasCoinAt(tx, ty) {
 
   const hVal = Math.sin(tx * 91.13 + ty * 23.47) * 43758.5453;
   const rand = hVal - Math.floor(hVal);
-  if (isHighlandPlateau(tx, ty)) return rand < 0.16;
-  return rand < 0.06;
+  if (isHighlandPlateau(tx, ty)) return rand < 0.08;
+  return rand < 0.03;
 }
 
 export function checkCoinPickup(tx, ty, updateHUDCallback) {
