@@ -21,8 +21,8 @@ export const player = {
   hasDealtDamage: false,
   initialized: false,
 
-  hp: 100,
-  maxHp: 100,
+  hp: 200,
+  maxHp: 200,
   mana: 100,
   maxMana: 100,
   manaRegenPerSecond: 12.5,

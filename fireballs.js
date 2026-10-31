@@ -6,6 +6,7 @@ import { getTileElevation, isCliff } from './world.js';
 
 const FIREBALL_SPEED = 8;
 const FIREBALL_DAMAGE = 20;
+const ENEMY_FIREBALL_DAMAGE = 10;
 const FIREBALL_RADIUS = 0.18;
 const FIREBALL_SIZE = 1.9;
 export const FIREBALL_MANA_COST = 0.5;
@@ -41,7 +42,7 @@ export function launchFireball(actor, owner = "player") {
     dirX: direction.x,
     dirY: direction.y,
     owner,
-    enemyVariant: owner === "enemy" ? actor.variant : null,
+    fireballColor: owner === "enemy" ? actor.fireballColor : null,
     age: 0,
     elevation: getTileElevation(Math.round(actor.currentX), Math.round(actor.currentY)),
     removed: false
@@ -64,7 +65,7 @@ function hitEnemyAt(x, y, damage, elevation) {
 function hitPlayerAt(x, y, player, elevation) {
   if (getTileElevation(Math.round(player.currentX), Math.round(player.currentY)) !== elevation) return false;
   if (Math.hypot(player.currentX + 0.5 - x, player.currentY + 0.5 - y) > 0.5 + FIREBALL_RADIUS) return false;
-  takePlayerDamage(FIREBALL_DAMAGE);
+  takePlayerDamage(ENEMY_FIREBALL_DAMAGE);
   return true;
 }
 
@@ -169,8 +170,24 @@ export function drawFireballVisuals(ctx) {
     const pulse = 0.92 + 0.12 * Math.sin(phase);
     const flicker = 0.82 + 0.18 * Math.sin(phase * 1.7);
     const enemyShot = fireball.owner === "enemy";
-    const blackShot = enemyShot && fireball.enemyVariant === 1;
-    const glowColor = blackShot ? "66, 32, 90" : enemyShot ? "157, 91, 220" : "255, 104, 24";
+    const fireballColor = enemyShot ? fireball.fireballColor : "#ff6818";
+    const [red, green, blue] = [
+      Number.parseInt(fireballColor.slice(1, 3), 16),
+      Number.parseInt(fireballColor.slice(3, 5), 16),
+      Number.parseInt(fireballColor.slice(5, 7), 16)
+    ];
+    const maxColor = Math.max(red, green, blue);
+    const minColor = Math.min(red, green, blue);
+    const blackShot = enemyShot && maxColor < 80;
+    const glowColor = `${red}, ${green}, ${blue}`;
+    let hue = 0;
+    if (maxColor !== minColor) {
+      const delta = maxColor - minColor;
+      if (maxColor === red) hue = ((green - blue) / delta) % 6;
+      else if (maxColor === green) hue = (blue - red) / delta + 2;
+      else hue = (red - green) / delta + 4;
+      hue = (hue * 60 + 360) % 360;
+    }
 
     ctx.save();
     ctx.translate(x, y);
@@ -187,10 +204,10 @@ export function drawFireballVisuals(ctx) {
     ctx.fill();
 
     ctx.globalCompositeOperation = "source-over";
-    ctx.shadowColor = blackShot ? "#321748" : enemyShot ? "#a764e8" : "#ff742b";
+    ctx.shadowColor = fireballColor;
     ctx.shadowBlur = globals.tile * (0.8 + 0.35 * (1 + Math.sin(phase)));
     if (blackShot) ctx.filter = "grayscale(1) brightness(0.15) contrast(1.4)";
-    else if (enemyShot) ctx.filter = "hue-rotate(260deg) saturate(1.8) brightness(1.08)";
+    else if (enemyShot) ctx.filter = `hue-rotate(${hue - 20}deg) saturate(1.8) brightness(1.08)`;
     ctx.drawImage(
       fireballImage,
       -width * pulse / 2,

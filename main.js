@@ -2,7 +2,7 @@ import { globals } from './globals.js';
 import { grassSheet, hillsSheet, waterSheet, resolveHillTile, getGrassVariation, getGrassDecor, getPondAt, getWaterDecor, isWaterTile, getTileElevation } from './world.js';
 import { objectsSheet, pondDecorSprites, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
 import { player, walk, attack, FOOT_OFFSET_Y, pushDir, removeDir, beginAttack, updatePlayer, getPlayerFootWorldPos, clearInputs } from './player.js';
-import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit } from './enemies.js';
+import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit, loadVillains } from './enemies.js';
 import { launchFireball, canFireballReach, updateFireballs, drawFireballVisuals } from './fireballs.js';
 import { updateUIElements, updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
 
@@ -16,6 +16,7 @@ const SPRITE_W_UNITS = 1.6;
 const SPRITE_H_UNITS = 1.6;
 const pointers = new Map();
 let lastTime = performance.now();
+let villainsLoaded = false;
 
 function updateHUD() {
   if (coinCounterEl) coinCounterEl.textContent = propState?.coinsCollectedCount ?? 0;
@@ -50,7 +51,7 @@ function resize() {
 
   globals.tile = Math.max(32, Math.min(56, Math.floor(Math.min(globals.viewW, globals.viewH) / 10 * 0.75)));
 
-  if (!player.initialized) {
+  if (!player.initialized && villainsLoaded) {
     player.tileX = 0; player.tileY = 0;
     player.targetX = 0; player.targetY = 0;
     player.currentX = 0; player.currentY = 0;
@@ -463,5 +464,15 @@ if (fireballButton) {
   fireballButton.addEventListener("pointercancel", () => fireballButton.classList.remove("active"));
 }
 
-resize();
-requestAnimationFrame(loop);
+async function startGame() {
+  try {
+    await loadVillains();
+    villainsLoaded = true;
+    resize();
+    requestAnimationFrame(loop);
+  } catch (error) {
+    console.error("Unable to start the game because villain assets failed to load.", error);
+  }
+}
+
+startGame();

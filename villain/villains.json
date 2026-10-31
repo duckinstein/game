@@ -1,0 +1,12 @@
+{
+  "villains": [
+    {
+      "fileName": "1",
+      "fireballColor": "#a764e8"
+    },
+    {
+      "fileName": "2",
+      "fireballColor": "#321748"
+    }
+  ]
+}

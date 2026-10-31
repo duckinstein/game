@@ -1,31 +1,93 @@
-import { globals, DIR, tryLoadImage } from './globals.js';
+import { globals, DIR } from './globals.js';
 import { getTileElevation, isCliff, isWaterTile } from './world.js';
 import { canStep, consumeBerryAt, damageMapObjectAt, getMapObjectAt, particles, setEnemySolidChecker } from './props.js';
 import { takePlayerDamage, addPlayerXP } from './player.js';
 import { canFireballReach } from './fireballs.js';
 import { drawEnemyHealthBar } from './ui.js';
+import { removeLightBackground } from './image-processing.js';
 
-function loadVillainSheet(paths, cols = 4, rows = 4) {
-  const sheet = { image: null, ready: false, fw: 32, fh: 32, cols, rows };
-  tryLoadImage(paths, (img) => {
-    sheet.image = img;
-    sheet.fw = img.naturalWidth / cols;
-    sheet.fh = img.naturalHeight / rows;
-    sheet.ready = true;
+function loadVillainSheet(path, cols, rows) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      if (image.naturalWidth % cols !== 0 || image.naturalHeight % rows !== 0) {
+        reject(new Error(`Villain spritesheet has invalid dimensions: ${path}`));
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        reject(new Error(`Unable to process villain spritesheet: ${path}`));
+        return;
+      }
+
+      context.drawImage(image, 0, 0);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      removeLightBackground(imageData, canvas.width, canvas.height);
+      context.putImageData(imageData, 0, 0);
+
+      resolve({
+        image: canvas,
+        ready: true,
+        fw: image.naturalWidth / cols,
+        fh: image.naturalHeight / rows,
+        cols,
+        rows
+      });
+    };
+    image.onerror = () => reject(new Error(`Unable to load villain spritesheet: ${path}`));
+    image.src = path;
   });
-  return sheet;
 }
 
-export const villainWalk = loadVillainSheet(["./villain/1_walk.png", "./1_walk.png"], 4, 4);
-export const villainAttack = loadVillainSheet(["./villain/1_attack.png", "./1_attack.png"], 4, 4);
-export const villainDie = loadVillainSheet(["./villain/1_die.png", "./1_die.png"], 4, 1);
-export const villain2Walk = loadVillainSheet(["./villain/2_walk.png"], 4, 4);
-export const villain2Attack = loadVillainSheet(["./villain/2_attack.png"], 4, 4);
-export const villain2Die = loadVillainSheet(["./villain/2_die.png"], 4, 1);
-const VILLAINS = [
-  { walk: villainWalk, attack: villainAttack, die: villainDie },
-  { walk: villain2Walk, attack: villain2Attack, die: villain2Die }
-];
+let VILLAINS = [];
+let villainsLoadPromise = null;
+
+export function loadVillains() {
+  if (villainsLoadPromise) return villainsLoadPromise;
+
+  villainsLoadPromise = (async () => {
+    const response = await fetch(new URL("./villain/villains.json", import.meta.url));
+    if (!response.ok) {
+      throw new Error(`Unable to load villain roster: ${response.status} ${response.statusText}`);
+    }
+
+    const roster = await response.json();
+    if (!Array.isArray(roster.villains) || roster.villains.length === 0) {
+      throw new Error("Villain roster must contain at least one villain.");
+    }
+
+    const fileNames = new Set();
+    const villains = await Promise.all(roster.villains.map(async (entry) => {
+      if (typeof entry.fileName !== "string" ||
+          !/^[a-zA-Z0-9_-]+$/.test(entry.fileName) ||
+          fileNames.has(entry.fileName)) {
+        throw new Error("Villain roster contains an invalid or duplicate fileName.");
+      }
+      if (typeof entry.fireballColor !== "string" || !/^#[\da-fA-F]{6}$/.test(entry.fireballColor)) {
+        throw new Error(`Villain "${entry.fileName}" must have a six-digit hex fireballColor.`);
+      }
+      fileNames.add(entry.fileName);
+
+      const sheetPath = suffix => new URL(
+        `./villain/${entry.fileName}_${suffix}.png`,
+        import.meta.url
+      ).href;
+      const [walk, attack, die] = await Promise.all([
+        loadVillainSheet(sheetPath("walk"), 4, 4),
+        loadVillainSheet(sheetPath("attack"), 4, 4),
+        loadVillainSheet(sheetPath("die"), 4, 1)
+      ]);
+      return { fileName: entry.fileName, fireballColor: entry.fireballColor, walk, attack, die };
+    }));
+
+    VILLAINS = villains;
+  })();
+
+  return villainsLoadPromise;
+}
 
 const MAX_ENEMIES = 5;
 const AGGRO_RANGE = 9.0;
@@ -200,6 +262,7 @@ function tryEatEnemyBerry(enemy) {
 export function createEnemy(tx, ty, variant = 0) {
   return {
     variant,
+    fireballColor: VILLAINS[variant]?.fireballColor,
     tileX: tx, tileY: ty,
     targetX: tx, targetY: ty,
     currentX: tx, currentY: ty,
@@ -210,7 +273,7 @@ export function createEnemy(tx, ty, variant = 0) {
 
     hp: 100,
     maxHp: 100,
-    damage: 20,
+    damage: 10,
     hasDealtDamage: false,
 
     state: "IDLE",
@@ -249,7 +312,7 @@ function spawnEnemyAround(player) {
       const occupiedByPlayer = player && ((player.tileX === tx && player.tileY === ty) ||
         (player.isMoving && player.targetX === tx && player.targetY === ty));
       if (!occupied && !occupiedByPlayer) {
-        enemies.push(createEnemy(tx, ty, nextEnemyVariant++ % 2));
+        enemies.push(createEnemy(tx, ty, nextEnemyVariant++ % VILLAINS.length));
         return;
       }
     }
@@ -502,7 +565,7 @@ export function checkPlayerAttackHit(player) {
 }
 
 export function drawEnemy(ctx, enemy) {
-  const villain = VILLAINS[enemy.variant === 1 ? 1 : 0];
+  const villain = VILLAINS[enemy.variant];
   let sheet = villain.walk;
   let frameX = 0;
   let frameY = 0;
