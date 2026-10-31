@@ -10,13 +10,11 @@ const canvas = document.getElementById("game");
 const outputCtx = canvas.getContext("2d");
 const sceneCanvas = document.createElement("canvas");
 const ctx = sceneCanvas.getContext("2d");
-const bloomCanvas = document.createElement("canvas");
-const bloomCtx = bloomCanvas.getContext("2d");
 const attackButton = document.getElementById("attack");
 const fireballButton = document.getElementById("fireball");
 const coinCounterEl = document.getElementById("coin-count");
 
-if (!outputCtx || !ctx || !bloomCtx) throw new Error("Unable to initialize the game canvas effects.");
+if (!outputCtx || !ctx) throw new Error("Unable to initialize the game canvas.");
 
 const SPRITE_W_UNITS = 1.6;
 const SPRITE_H_UNITS = 1.6;
@@ -55,8 +53,6 @@ function resize() {
   canvas.height = Math.round(globals.viewH * globals.dpr);
   sceneCanvas.width = canvas.width;
   sceneCanvas.height = canvas.height;
-  bloomCanvas.width = Math.max(1, Math.ceil(globals.viewW / 2));
-  bloomCanvas.height = Math.max(1, Math.ceil(globals.viewH / 2));
   ctx.setTransform(globals.dpr, 0, 0, globals.dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
   outputCtx.setTransform(globals.dpr, 0, 0, globals.dpr, 0, 0);
@@ -418,22 +414,6 @@ function draw(now) {
   outputCtx.clearRect(0, 0, globals.viewW, globals.viewH);
   outputCtx.imageSmoothingEnabled = false;
   outputCtx.drawImage(sceneCanvas, 0, 0, globals.viewW, globals.viewH);
-
-  bloomCtx.clearRect(0, 0, bloomCanvas.width, bloomCanvas.height);
-  bloomCtx.save();
-  bloomCtx.filter = "blur(8px) brightness(1.6) saturate(1.35)";
-  bloomCtx.drawImage(canvas, 0, 0, bloomCanvas.width, bloomCanvas.height);
-  bloomCtx.restore();
-
-  outputCtx.save();
-  outputCtx.globalCompositeOperation = "screen";
-  outputCtx.globalAlpha = 0.3;
-  outputCtx.drawImage(bloomCanvas, 0, 0, globals.viewW, globals.viewH);
-  outputCtx.globalCompositeOperation = "soft-light";
-  outputCtx.globalAlpha = 0.12;
-  outputCtx.fillStyle = "#f8dcff";
-  outputCtx.fillRect(0, 0, globals.viewW, globals.viewH);
-  outputCtx.restore();
 }
 
 function loop(now) {

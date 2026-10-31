@@ -14,7 +14,11 @@
     },
     {
       "fileName": "4",
-      "fireballColor": "##1fff9e"
+      "fireballColor": "#3da155"
     },
+    {
+    "fileName": "5",
+      "fireballColor": "#ff0000"
+    }
   ]
 }
