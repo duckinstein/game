@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2b5e28">
+<title>Lorna Hermit - RPG</title>
+<style>
+  :root {
+    --ink: #f4ffe9;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; margin: 0; overflow: hidden;
+    background: #8fc257; color: var(--ink);
+    font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+    overscroll-behavior: none;
+  }
+  #game {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    display: block; touch-action: none;
+  }
+  .hud {
+    position: fixed; inset: 0; pointer-events: none;
+    padding:
+      max(14px, env(safe-area-inset-top))
+      max(14px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+  }
+
+  /* --- TOP-RIGHT HUD (Enlarged, Clear & Flush) --- */
+  .top-right-hud {
+    position: absolute;
+    top: max(14px, env(safe-area-inset-top));
+    right: max(14px, env(safe-area-inset-right));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+    pointer-events: auto;
+  }
+
+  .golden-coin-box {
+    position: relative;
+    background: #fffef0;
+    border: 3px solid #e89f30;
+    outline: 2px solid #431c0e;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,.5), inset 0 2px 0 #fee478;
+    height: 38px;
+    min-width: 105px;
+    display: flex;
+    align-items: center;
+    padding-left: 14px;
+    padding-right: 34px;
+  }
+
+  .coin-text {
+    font-size: 18px;
+    font-weight: 900;
+    color: #431c0e;
+    text-shadow: 0 1px 0 rgba(255,255,255,.8);
+    font-family: monospace, system-ui;
+  }
+
+  .coin-sprite-edge {
+    position: absolute;
+    right: -13px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    image-rendering: pixelated;
+  }
+
+  /* Much larger, clearer player health bar */
+  .player-health-wrap {
+    image-rendering: pixelated;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,.65));
+  }
+
+  #player-health-canvas {
+    width: 240px;
+    height: 46px;
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  /* --- CONTROLS --- */
+  .controls {
+    position: absolute; left: max(18px, env(safe-area-inset-left));
+    right: max(18px, env(safe-area-inset-right));
+    bottom: max(20px, env(safe-area-inset-bottom));
+    display: flex; align-items: flex-end; justify-content: space-between;
+    pointer-events: none;
+  }
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, clamp(48px, 13vw, 64px));
+    grid-template-rows: repeat(3, clamp(48px, 13vw, 64px));
+    gap: 6px;
+    pointer-events: auto;
+  }
+  .dpad-btn {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; touch-action: none; cursor: pointer;
+    background: transparent no-repeat center / contain;
+    border: none;
+    outline: none;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,.55));
+    transition: transform .06s ease, filter .06s ease;
+    image-rendering: pixelated;
+  }
+  .dpad-btn:active, .dpad-btn.active {
+    transform: translateY(3px);
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)) brightness(0.9);
+  }
+  .up { grid-column: 2; grid-row: 1; }
+  .left { grid-column: 1; grid-row: 2; }
+  .right { grid-column: 3; grid-row: 2; }
+  .down { grid-column: 2; grid-row: 3; }
+
+  #attack {
+    width: clamp(74px, 19vw, 92px);
+    height: clamp(74px, 19vw, 92px);
+    margin: 0 4px 6px 0;
+    pointer-events: auto;
+    background: transparent no-repeat center / contain;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,.55));
+    transition: transform .06s ease, filter .06s ease;
+    image-rendering: pixelated;
+  }
+  #attack:active, #attack.active {
+    transform: translateY(4px);
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)) brightness(0.9);
+  }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Sprout Lands Canvas RPG"></canvas>
+<div class="hud">
+
+  <div class="top-right-hud">
+    <!-- Golden Box with Coin Sprite on Right Edge -->
+    <div class="golden-coin-box">
+      <span class="coin-text" id="coin-count">0</span>
+      <img id="coin-icon-img" class="coin-sprite-edge" alt="Coin">
+    </div>
+
+    <!-- Larger, Clear Player Health Bar -->
+    <div class="player-health-wrap">
+      <canvas id="player-health-canvas" width="240" height="46"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="dpad" aria-label="Movement controls">
+      <button class="dpad-btn up" data-dir="up" aria-label="Move up"></button>
+      <button class="dpad-btn left" data-dir="left" aria-label="Move left"></button>
+      <button class="dpad-btn right" data-dir="right" aria-label="Move right"></button>
+      <button class="dpad-btn down" data-dir="down" aria-label="Move down"></button>
+    </div>
+    <button id="attack" aria-label="Attack" title="Attack"></button>
+  </div>
+</div>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "lorna-hermit-rpg",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A pixel-art RPG built with vanilla JavaScript and HTML canvas",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "dev": "python3 -m http.server 8000"
+  }
+}
