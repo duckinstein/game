@@ -1,7 +1,7 @@
 import { globals, DIR, DIR_MAP, loadSheet } from './globals.js';
-import { isHighlandPlateau, isCliff, getTileElevation } from './world.js';
-import { canStep, checkCoinPickup, particles } from './props.js';
-import { updatePlayerHUDHealth } from './ui.js';
+import { isHighlandPlateau, isCliff, getTileElevation, isWaterTile } from './world.js';
+import { canStep, checkCoinPickup, consumeBerryAt, consumeMushroomAt, particles } from './props.js';
+import { updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
 
 export const walk = loadSheet("./walk_sheet.png");
 export const attack = loadSheet("./attack_sheet.png");
@@ -23,6 +23,9 @@ export const player = {
 
   hp: 100,
   maxHp: 100,
+  mana: 100,
+  maxMana: 100,
+  manaRegenPerSecond: 12.5,
   xp: 0,
   maxXp: 100,
   level: 1,
@@ -62,7 +65,7 @@ export function getPlayerFootWorldPos() {
 
   return {
     x: (player.currentX + 0.5) * globals.tile,
-    y: (player.currentY + FOOT_OFFSET_Y) * globals.tile - (elev * globals.tile * 0.6)
+    y: (player.currentY + FOOT_OFFSET_Y - elev * 0.6) * globals.tile
   };
 }
 
@@ -108,6 +111,13 @@ export function takePlayerDamage(amount) {
   }
 }
 
+export function spendPlayerMana(amount) {
+  if (player.mana < amount) return false;
+  player.mana -= amount;
+  updatePlayerHUDMana(player.mana, player.maxMana);
+  return true;
+}
+
 export function addPlayerXP(amount) {
   player.xp += amount;
   if (player.xp >= player.maxXp) {
@@ -129,6 +139,42 @@ export function addPlayerXP(amount) {
       stroke: "#00451a"
     });
   }
+}
+
+function eatBerryAt(tx, ty) {
+  if (player.hp >= player.maxHp || !consumeBerryAt(tx, ty)) return;
+
+  const healing = Math.ceil(player.maxHp / 5);
+  const healed = Math.min(healing, player.maxHp - player.hp);
+  player.hp += healed;
+  updatePlayerHUDHealth(player.hp, player.maxHp);
+  particles.push({
+    x: (tx + 0.5) * globals.tile,
+    y: (ty + 0.2) * globals.tile,
+    vy: -globals.tile * 1.4,
+    life: 0.7,
+    maxLife: 0.7,
+    text: `+${healed} HP`,
+    color: "#ff6d9a",
+    stroke: "#4a1028"
+  });
+}
+
+function eatMushroomAt(tx, ty) {
+  if (player.mana >= player.maxMana || !consumeMushroomAt(tx, ty)) return;
+
+  player.mana = Math.min(player.maxMana, player.mana + 1);
+  updatePlayerHUDMana(player.mana, player.maxMana);
+  particles.push({
+    x: (tx + 0.5) * globals.tile,
+    y: (ty + 0.2) * globals.tile,
+    vy: -globals.tile * 1.4,
+    life: 0.7,
+    maxLife: 0.7,
+    text: "+1 MANA",
+    color: "#65c8ff",
+    stroke: "#12385c"
+  });
 }
 
 export function tryStartStep(dirName) {
@@ -160,6 +206,11 @@ export function tryStartStep(dirName) {
 }
 
 export function updatePlayer(dt, onCoinPickupCallback, onAttackEndCallback, onAttackHitCallback) {
+  if (player.mana < player.maxMana) {
+    player.mana = Math.min(player.maxMana, player.mana + player.manaRegenPerSecond * dt);
+    updatePlayerHUDMana(player.mana, player.maxMana);
+  }
+
   if (player.invulnerableTimer > 0) {
     player.invulnerableTimer -= dt;
   }
@@ -185,7 +236,8 @@ export function updatePlayer(dt, onCoinPickupCallback, onAttackEndCallback, onAt
   }
 
   if (player.isMoving) {
-    player.moveProgress += dt / STEP_DURATION;
+    const inWater = isWaterTile(player.tileX, player.tileY) || isWaterTile(player.targetX, player.targetY);
+    player.moveProgress += dt / STEP_DURATION * (inWater ? 0.3 : 1);
     player.walkFrame = Math.floor(player.moveProgress * 4) % 4;
 
     if (player.moveProgress >= 1) {
@@ -195,6 +247,8 @@ export function updatePlayer(dt, onCoinPickupCallback, onAttackEndCallback, onAt
       player.currentY = player.tileY;
 
       checkCoinPickup(player.tileX, player.tileY, onCoinPickupCallback);
+      eatBerryAt(player.tileX, player.tileY);
+      eatMushroomAt(player.tileX, player.tileY);
 
       const nextDir = getActiveDir();
       if (nextDir) {
@@ -211,6 +265,8 @@ export function updatePlayer(dt, onCoinPickupCallback, onAttackEndCallback, onAt
 
       if (player.moveProgress > 0.45) {
         checkCoinPickup(player.targetX, player.targetY, onCoinPickupCallback);
+        eatBerryAt(player.targetX, player.targetY);
+        eatMushroomAt(player.targetX, player.targetY);
       }
     }
   } else {

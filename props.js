@@ -1,5 +1,5 @@
 import { globals, tryLoadImage } from './globals.js';
-import { isHighlandPlateau, isCliff, isStairs, getTileElevation, getHighlandAt } from './world.js';
+import { isHighlandPlateau, isCliff, isStairs, getTileElevation, getHighlandAt, isWaterTile } from './world.js';
 
 export const objectsSheet = {
   image: null,
@@ -16,8 +16,14 @@ export const objectsSheet = {
     BUSH_REGULAR: { sx: 0,  sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: false },
     BUSH_BERRY:   { sx: 64, sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: false },
     MUSHROOM:     { sx: 80, sy: 0,  sw: 16, sh: 16, wUnits: 1, hUnits: 0.8, footOffsetY: 0.5, solid: false },
-    SUNFLOWER:    { sx: 128, sy: 32, sw: 16, sh: 32, wUnits: 1, hUnits: 2.0, footOffsetY: 1.8, solid: false }
   }
+};
+
+const changedObjects = new Map();
+
+export const pondDecorSprites = {
+  lily: { sx: 128, sy: 64, sw: 16, sh: 16 },
+  flower: { sx: 112, sy: 32, sw: 16, sh: 16 }
 };
 
 tryLoadImage([
@@ -27,9 +33,7 @@ tryLoadImage([
   "./objects.png"
 ], (img) => {
   objectsSheet.image = img;
-  let scale = img.naturalWidth / 224;
-  if (scale < 1) scale = 1;
-  objectsSheet.u = 16 * scale;
+  objectsSheet.u = img.naturalWidth / 9;
   objectsSheet.ready = true;
 });
 
@@ -97,7 +101,7 @@ tryLoadImage(["./coins.png", "./coin.png"], (img) => {
 });
 
 export function getMapObjectAt(tx, ty) {
-  if ((Math.abs(tx) <= 1 && Math.abs(ty) <= 1) || isCliff(tx, ty) || isStairs(tx, ty)) return null;
+  if ((Math.abs(tx) <= 1 && Math.abs(ty) <= 1) || isCliff(tx, ty) || isStairs(tx, ty) || isWaterTile(tx, ty)) return null;
 
   const h = getHighlandAt(tx, ty);
   if (h && (tx === h.stairX1 || tx === h.stairX2) && (ty >= h.y1 - 1 && ty <= h.cliffY + 2)) {
@@ -106,14 +110,74 @@ export function getMapObjectAt(tx, ty) {
 
   const hVal = Math.sin(tx * 12.9898 + ty * 78.233) * 43758.5453;
   const rand = Math.abs(hVal - Math.floor(hVal));
+  const key = `${tx},${ty}`;
+  if (changedObjects.has(key)) return changedObjects.get(key);
+
   const typeKeys = Object.keys(objectsSheet.types);
   if (rand < 0.04) {
     const typeIndex = Math.floor((rand * 1000) % typeKeys.length);
     const typeName = typeKeys[typeIndex];
     const def = objectsSheet.types[typeName];
-    return { name: typeName, def, tx, ty, footY: ty + def.footOffsetY, key: `${tx},${ty}` };
+    return { name: typeName, def, tx, ty, footY: ty + def.footOffsetY, key };
   }
   return null;
+}
+
+export function getMapObjectAtWorld(x, y, radius = 0) {
+  const tileX = Math.floor(x);
+  const tileY = Math.floor(y);
+
+  for (let ty = tileY - 2; ty <= tileY + 1; ty++) {
+    for (let tx = tileX - 2; tx <= tileX + 1; tx++) {
+      const object = getMapObjectAt(tx, ty);
+      if (!object) continue;
+
+      const elevation = getTileElevation(object.tx, object.ty) * 0.6;
+      const left = object.tx - radius;
+      const right = object.tx + object.def.wUnits + radius;
+      const top = object.ty + object.def.footOffsetY - object.def.hUnits - elevation - radius;
+      const bottom = object.ty + object.def.footOffsetY - elevation + radius;
+      if (x >= left && x <= right && y >= top && y <= bottom) return object;
+    }
+  }
+  return null;
+}
+
+export function damageMapObjectAt(x, y, radius = 0) {
+  const object = getMapObjectAtWorld(x, y, radius);
+  if (!object) return false;
+
+  if (object.name.startsWith("TREE_")) {
+    const stumpName = object.name === "TREE_TALL" ? "STUMP_1" : "STUMP_2";
+    const stumpDef = objectsSheet.types[stumpName];
+    const stumpX = object.tx + Math.floor(object.def.wUnits / 2);
+    const stumpY = object.ty + 1;
+    changedObjects.set(object.key, {
+      name: stumpName,
+      def: stumpDef,
+      tx: stumpX,
+      ty: stumpY,
+      footY: stumpY + stumpDef.footOffsetY,
+      key: object.key
+    });
+  } else {
+    changedObjects.set(object.key, null);
+  }
+  return true;
+}
+
+export function consumeBerryAt(tx, ty) {
+  const object = getMapObjectAt(tx, ty);
+  if (!object || object.name !== "BUSH_BERRY") return false;
+  changedObjects.set(object.key, null);
+  return true;
+}
+
+export function consumeMushroomAt(tx, ty) {
+  const object = getMapObjectAt(tx, ty);
+  if (!object || object.name !== "MUSHROOM") return false;
+  changedObjects.set(object.key, null);
+  return true;
 }
 
 export function hasObjectCollision(tx, ty) {
@@ -162,8 +226,52 @@ export let coinsCollectedCount = 0;
 export const collectedCoins = new Set();
 export const particles = [];
 
+const COIN_SAVE_KEY = "sprout-lands.coin-progress.v1";
+
+function loadCoinProgress() {
+  let saved;
+  try {
+    saved = localStorage.getItem(COIN_SAVE_KEY);
+  } catch (error) {
+    console.error("Unable to load saved coin progress.", error);
+    return;
+  }
+  if (saved === null) return;
+
+  let progress;
+  try {
+    progress = JSON.parse(saved);
+  } catch (error) {
+    console.error("Saved coin progress is not valid JSON.", error);
+    return;
+  }
+  if (!Number.isSafeInteger(progress?.coins) || progress.coins < 0 ||
+      !Array.isArray(progress.collected) ||
+      !progress.collected.every(key => typeof key === "string" && /^-?\d+,-?\d+$/.test(key))) {
+    console.error("Saved coin progress has an invalid format.");
+    return;
+  }
+
+  propState.coinsCollectedCount = progress.coins;
+  coinsCollectedCount = progress.coins;
+  for (const key of progress.collected) collectedCoins.add(key);
+}
+
+function saveCoinProgress() {
+  try {
+    localStorage.setItem(COIN_SAVE_KEY, JSON.stringify({
+      coins: propState.coinsCollectedCount,
+      collected: [...collectedCoins]
+    }));
+  } catch (error) {
+    console.error("Unable to save coin progress.", error);
+  }
+}
+
+loadCoinProgress();
+
 export function hasCoinAt(tx, ty) {
-  if (isCliff(tx, ty) || isStairs(tx, ty) || hasObjectCollision(tx, ty)) return false;
+  if (isCliff(tx, ty) || isStairs(tx, ty) || isWaterTile(tx, ty) || hasObjectCollision(tx, ty)) return false;
   const key = `${tx},${ty}`;
   if (collectedCoins.has(key)) return false;
 
@@ -179,12 +287,13 @@ export function checkCoinPickup(tx, ty, updateHUDCallback) {
     collectedCoins.add(key);
     propState.coinsCollectedCount++;
     coinsCollectedCount = propState.coinsCollectedCount;
+    saveCoinProgress();
     if (updateHUDCallback) updateHUDCallback(propState.coinsCollectedCount);
 
     const elev = getTileElevation(tx, ty);
     particles.push({
       x: (tx + 0.5) * globals.tile,
-      y: (ty + 0.5) * globals.tile - (elev * globals.tile * 0.6),
+      y: (ty + 0.5 - elev) * globals.tile,
       vy: -globals.tile * 1.6,
       life: 0.65,
       maxLife: 0.65

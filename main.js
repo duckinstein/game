@@ -1,13 +1,15 @@
 import { globals } from './globals.js';
-import { grassSheet, hillsSheet, resolveHillTile, getGrassVariation, getGrassDecor, getTileElevation } from './world.js';
-import { objectsSheet, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
+import { grassSheet, hillsSheet, waterSheet, resolveHillTile, getGrassVariation, getGrassDecor, getPondAt, getWaterDecor, isWaterTile, getTileElevation } from './world.js';
+import { objectsSheet, pondDecorSprites, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
 import { player, walk, attack, FOOT_OFFSET_Y, pushDir, removeDir, beginAttack, updatePlayer, getPlayerFootWorldPos, clearInputs } from './player.js';
 import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit } from './enemies.js';
-import { updateUIElements, updatePlayerHUDHealth } from './ui.js';
+import { launchFireball, canFireballReach, updateFireballs, drawFireballVisuals } from './fireballs.js';
+import { updateUIElements, updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const attackButton = document.getElementById("attack");
+const fireballButton = document.getElementById("fireball");
 const coinCounterEl = document.getElementById("coin-count");
 
 const SPRITE_W_UNITS = 1.6;
@@ -26,6 +28,15 @@ function handleAttackEnd() {
 
 function handleAttackHit(playerObj) {
   checkPlayerAttackHit(playerObj);
+}
+
+function tryEnemyRangedAttack(enemy) {
+  const fromX = enemy.currentX + 0.5;
+  const fromY = enemy.currentY + 0.5;
+  const targetX = player.currentX + 0.5;
+  const targetY = player.currentY + 0.5;
+  if (!canFireballReach(fromX, fromY, targetX, targetY)) return false;
+  return launchFireball(enemy, "enemy");
 }
 
 function resize() {
@@ -53,6 +64,7 @@ function resize() {
   }
   updateCamera();
   updateUIElements();
+  updatePlayerHUDMana(player.mana, player.maxMana);
 }
 window.addEventListener("resize", resize, { passive: true });
 
@@ -67,7 +79,8 @@ function updateCamera() {
 
 function update(dt) {
   updatePlayer(dt, () => {}, handleAttackEnd, handleAttackHit);
-  updateEnemies(dt, player);
+  updateEnemies(dt, player, tryEnemyRangedAttack);
+  updateFireballs(dt, player);
   updateHUD();
 
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -96,6 +109,54 @@ function drawLowGrassTile(tx, ty, x, y) {
     ctx.fillStyle = "#8fc257";
     ctx.fillRect(x, y, globals.tile, globals.tile);
   }
+
+}
+
+function drawPondTile(tx, ty, x, y, now) {
+  const pond = getPondAt(tx, ty);
+  if (!pond) return;
+
+  const centerX = (pond.x + 0.5) * globals.tile - globals.cameraX;
+  const centerY = (pond.y + 0.5) * globals.tile - globals.cameraY;
+  const bankWidth = globals.tile * 0.12;
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(
+    centerX,
+    centerY,
+    (pond.rx + 0.5) * globals.tile - bankWidth,
+    (pond.ry + 0.5) * globals.tile - bankWidth,
+    0,
+    0,
+    Math.PI * 2
+  );
+  ctx.clip();
+
+  if (waterSheet.ready && waterSheet.image) {
+    const frame = Math.floor(now / 300) % 4;
+    const u = waterSheet.frameSize;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(waterSheet.image, frame * u, 0, u, u, x, y, globals.tile, globals.tile);
+  } else {
+    ctx.fillStyle = "#72c9d2";
+    ctx.fillRect(x, y, globals.tile, globals.tile);
+  }
+
+  const decor = getWaterDecor(tx, ty);
+  if (decor && objectsSheet.ready && objectsSheet.image) {
+    const sprite = pondDecorSprites[decor];
+    const size = globals.tile * 0.75;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      objectsSheet.image,
+      sprite.sx, sprite.sy, sprite.sw, sprite.sh,
+      Math.round(x + (globals.tile - size) / 2),
+      Math.round(y + (globals.tile - size) / 2),
+      size,
+      size
+    );
+  }
+  ctx.restore();
 }
 
 function drawHighlandCell(role, x, y) {
@@ -110,7 +171,7 @@ function drawHighlandCell(role, x, y) {
   }
 }
 
-function drawWorld() {
+function drawWorld(now) {
   ctx.fillStyle = "#8fc257";
   ctx.fillRect(0, 0, globals.viewW, globals.viewH);
 
@@ -129,6 +190,10 @@ function drawWorld() {
       const y = Math.round(offsetY + r * globals.tile);
 
       drawLowGrassTile(tx, ty, x, y);
+
+      if (isWaterTile(tx, ty)) {
+        drawPondTile(tx, ty, x, y, now);
+      }
 
       const hillRole = resolveHillTile(tx, ty);
       if (hillRole) {
@@ -169,7 +234,9 @@ function drawCoin(cx, cy, coinFrameIdx) {
 
 function drawPlayerSprite(sheet, frameX, frameY, footScreenX, footScreenY) {
   const destW = globals.tile * SPRITE_W_UNITS;
-  const destH = globals.tile * SPRITE_H_UNITS;
+  const isSubmerged = isWaterTile(Math.round(player.currentX), Math.round(player.currentY));
+  const visibleHeight = isSubmerged ? 0.6 : 1;
+  const destH = globals.tile * SPRITE_H_UNITS * visibleHeight;
   const drawX = Math.round(footScreenX - destW * 0.5);
   const drawY = Math.round(footScreenY - destH);
 
@@ -180,14 +247,14 @@ function drawPlayerSprite(sheet, frameX, frameY, footScreenX, footScreenY) {
       ctx.filter = "brightness(2.2) sepia(1) saturate(5) hue-rotate(-50deg)";
       ctx.drawImage(
         sheet.image,
-        frameX * sheet.fw, frameY * sheet.fh, sheet.fw, sheet.fh,
+        frameX * sheet.fw, frameY * sheet.fh, sheet.fw, sheet.fh * visibleHeight,
         drawX, drawY, destW, destH
       );
       ctx.restore();
     } else {
       ctx.drawImage(
         sheet.image,
-        frameX * sheet.fw, frameY * sheet.fh, sheet.fw, sheet.fh,
+        frameX * sheet.fw, frameY * sheet.fh, sheet.fw, sheet.fh * visibleHeight,
         drawX, drawY, destW, destH
       );
     }
@@ -213,7 +280,7 @@ function drawMapObject(obj) {
 
   const elev = getTileElevation(obj.tx, obj.ty);
   const screenX = (obj.tx + obj.def.wUnits * 0.5) * globals.tile - globals.cameraX;
-  const screenY = (obj.ty + obj.def.footOffsetY) * globals.tile - globals.cameraY - (elev * globals.tile * 0.6);
+  const screenY = (obj.ty + obj.def.footOffsetY - elev * 0.6) * globals.tile - globals.cameraY;
 
   const drawX = Math.round(screenX - destW * 0.5);
   const drawY = Math.round(screenY - destH);
@@ -228,7 +295,7 @@ function drawMapObject(obj) {
 
 function draw(now) {
   ctx.clearRect(0, 0, globals.viewW, globals.viewH);
-  drawWorld();
+  drawWorld(now);
 
   const minCol = Math.floor((globals.cameraX - globals.tile * 3) / globals.tile);
   const maxCol = Math.ceil((globals.cameraX + globals.viewW + globals.tile * 3) / globals.tile);
@@ -241,7 +308,7 @@ function draw(now) {
     for (let c = minCol; c <= maxCol; c++) {
       if (hasCoinAt(c, r)) {
         const elev = getTileElevation(c, r);
-        drawCoin((c + 0.5) * globals.tile, (r + 0.5) * globals.tile - (elev * globals.tile * 0.6), coinFrameIdx);
+        drawCoin((c + 0.5) * globals.tile, (r + 0.5 - elev * 0.6) * globals.tile, coinFrameIdx);
       }
     }
   }
@@ -290,9 +357,9 @@ function draw(now) {
     });
   }
 
-  // 4. Sort and render back-to-front
   renderQueue.sort((a, b) => a.footY - b.footY);
   for (const item of renderQueue) item.draw();
+  drawFireballVisuals(ctx);
 
   // Floating Combat & Reward Particles
   if (particles.length > 0) {
@@ -338,17 +405,23 @@ window.addEventListener("keydown", e => {
     e.preventDefault(); 
     if (beginAttack() && attackButton) attackButton.classList.add("active");
   }
+  if (e.code === "KeyF" && !e.repeat) {
+    e.preventDefault();
+    if (launchFireball(player) && fireballButton) fireballButton.classList.add("active");
+  }
 });
 
 window.addEventListener("keyup", e => {
   const dir = keyDirection(e.code);
   if (dir) { removeDir(dir); e.preventDefault(); }
+  if (e.code === "KeyF" && fireballButton) fireballButton.classList.remove("active");
 });
 
 window.addEventListener("blur", () => {
   clearInputs();
   pointers.clear();
   document.querySelectorAll("[data-dir]").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".action-btn").forEach(b => b.classList.remove("active"));
 });
 
 document.querySelectorAll("[data-dir]").forEach(button => {
@@ -379,6 +452,15 @@ if (attackButton) {
   });
   attackButton.addEventListener("pointerup", () => attackButton.classList.remove("active"));
   attackButton.addEventListener("pointercancel", () => attackButton.classList.remove("active"));
+}
+
+if (fireballButton) {
+  fireballButton.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (launchFireball(player)) fireballButton.classList.add("active");
+  });
+  fireballButton.addEventListener("pointerup", () => fireballButton.classList.remove("active"));
+  fireballButton.addEventListener("pointercancel", () => fireballButton.classList.remove("active"));
 }
 
 resize();

@@ -5,6 +5,8 @@ export const uiSheet = { ready: false, frames: {} };
 export const playerHealthSheet = { ready: false, frames: [], canvas: null };
 export const enemyHealthSheet = { ready: false, frames: [], canvas: null };
 export const attackBtnSheet = { ready: false, dataUrl: null };
+let actionCircleCanvas = null;
+let playerManaHud = { current: 100, max: 100 };
 
 // --- 2. FLOOD-FILL BACKGROUND REMOVAL & AUTOTRIM ---
 function processOffscreenCanvas(img) {
@@ -102,6 +104,7 @@ tryLoadImage(["./player_hp.png", "./0-health bar.png"], (img) => {
 
   playerHealthSheet.ready = playerHealthSheet.frames.length >= 6;
   updatePlayerHUDHealth(100, 100);
+  updatePlayerHUDMana(playerManaHud.current, playerManaHud.max);
 });
 
 // --- 4. LOAD & PARSE ENEMY_HEALTH.PNG (Enemy Health Bar - 11 vertical rows) ---
@@ -182,12 +185,17 @@ tryLoadImage(["./attack_btn.png", "./attack_button.png", "./sword.png", "./attac
   const bctx = btnCanvas.getContext("2d");
   bctx.imageSmoothingEnabled = false;
 
-  // 1. Draw circle base
+  actionCircleCanvas = document.createElement("canvas");
+  actionCircleCanvas.width = 72;
+  actionCircleCanvas.height = 72;
+  const circleCtx = actionCircleCanvas.getContext("2d");
+  circleCtx.imageSmoothingEnabled = false;
   if (circleBounds) {
-    bctx.drawImage(canvas, circleBounds.sx, circleBounds.sy, circleBounds.sw, circleBounds.sh, 2, 2, 68, 68);
+    circleCtx.drawImage(canvas, circleBounds.sx, circleBounds.sy, circleBounds.sw, circleBounds.sh, 2, 2, 68, 68);
   } else {
-    drawProceduralCircle(bctx, 72);
+    drawProceduralCircle(circleCtx, 72);
   }
+  bctx.drawImage(actionCircleCanvas, 0, 0);
 
   // 2. Tint sword to dark brown (#3a1406) and center it
   if (swordBounds) {
@@ -218,6 +226,7 @@ tryLoadImage(["./attack_btn.png", "./attack_button.png", "./sword.png", "./attac
   attackBtnSheet.dataUrl = btnCanvas.toDataURL();
   attackBtnSheet.ready = true;
   updateAttackButton();
+  updateFireballButton();
 });
 
 function drawProceduralCircle(ctx, size) {
@@ -299,6 +308,7 @@ export function updateUIElements() {
   }
 
   updateAttackButton();
+  updateFireballButton();
 }
 
 export function updateAttackButton() {
@@ -315,6 +325,25 @@ export function updateAttackButton() {
     drawProceduralSword(ctx, 72);
     attackBtn.style.backgroundImage = `url("${c.toDataURL()}")`;
   }
+}
+
+export function updateFireballButton() {
+  const fireballBtn = document.getElementById("fireball");
+  if (!fireballBtn) return;
+
+  const circleUrl = actionCircleCanvas
+    ? actionCircleCanvas.toDataURL()
+    : (() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 72;
+        canvas.height = 72;
+        drawProceduralCircle(canvas.getContext("2d"), 72);
+        return canvas.toDataURL();
+      })();
+  fireballBtn.style.backgroundImage = `url("./effects/fireball.gif"), url("${circleUrl}")`;
+  fireballBtn.style.backgroundSize = "68% auto, 100% 100%";
+  fireballBtn.style.backgroundPosition = "center";
+  fireballBtn.style.backgroundRepeat = "no-repeat";
 }
 
 function generateProceduralCoin() {
@@ -334,13 +363,22 @@ function generateProceduralCoin() {
 
 // --- 7. LARGE, CLEAR PLAYER HEALTH BAR (0 to 5 Stages) ---
 export function updatePlayerHUDHealth(currentHp, maxHp) {
-  const canvas = document.getElementById("player-health-canvas");
+  drawPlayerResourceBar("player-health-canvas", currentHp, maxHp, false);
+}
+
+export function updatePlayerHUDMana(currentMana, maxMana) {
+  playerManaHud = { current: currentMana, max: maxMana };
+  drawPlayerResourceBar("player-mana-canvas", currentMana, maxMana, true);
+}
+
+function drawPlayerResourceBar(canvasId, current, max, blueTint) {
+  const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const ratio = Math.max(0, Math.min(1, currentHp / maxHp));
+  const ratio = Math.max(0, Math.min(1, current / max));
 
   // 6 Stages from 100% to 0%
   let stage = 0;
@@ -359,7 +397,10 @@ export function updatePlayerHUDHealth(currentHp, maxHp) {
     const destX = Math.round((canvas.width - destW) / 2);
     const destY = Math.round((canvas.height - destH) / 2);
 
+    ctx.save();
+    if (blueTint) ctx.filter = "hue-rotate(190deg) saturate(1.5)";
     ctx.drawImage(playerHealthSheet.canvas, f.sx, f.sy, f.sw, f.sh, destX, destY, destW, destH);
+    ctx.restore();
     return;
   }
 
@@ -368,7 +409,7 @@ export function updatePlayerHUDHealth(currentHp, maxHp) {
   const barX = canvas.width - barW, barY = Math.round((canvas.height - barH) / 2);
 
   // Heart
-  ctx.fillStyle = ratio > 0.2 ? "#e62238" : "#444";
+  ctx.fillStyle = ratio > 0.2 ? (blueTint ? "#278de0" : "#e62238") : "#444";
   ctx.beginPath();
   ctx.arc(barX - 18, barY + 7, 7, 0, Math.PI * 2);
   ctx.arc(barX - 8, barY + 7, 7, 0, Math.PI * 2);
@@ -387,9 +428,9 @@ export function updatePlayerHUDHealth(currentHp, maxHp) {
   for (let s = 0; s < segments; s++) {
     const sx = barX + s * (segW + 2);
     if (s < activeSegs) {
-      ctx.fillStyle = "#e62238";
+      ctx.fillStyle = blueTint ? "#278de0" : "#e62238";
       ctx.fillRect(sx, barY, segW, barH);
-      ctx.fillStyle = "#ff7d8d";
+      ctx.fillStyle = blueTint ? "#86d9ff" : "#ff7d8d";
       ctx.fillRect(sx, barY, segW, 3);
     }
   }

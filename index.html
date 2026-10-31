@@ -21,7 +21,7 @@
     display: block; touch-action: none;
   }
   .hud {
-    position: fixed; inset: 0; pointer-events: none;
+    position: fixed; inset: 0; pointer-events: none; z-index: 2;
     padding:
       max(14px, env(safe-area-inset-top))
       max(14px, env(safe-area-inset-right))
@@ -80,16 +80,26 @@
     left: max(14px, env(safe-area-inset-left));
   }
 
+  .player-resource-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
   .player-health-wrap {
     image-rendering: pixelated;
     filter: drop-shadow(0 4px 10px rgba(0,0,0,.65));
   }
 
-  #player-health-canvas {
+  .resource-canvas {
     width: min(168px, 28.8vw);
     height: auto;
     display: block;
     image-rendering: pixelated;
+  }
+
+  .player-mana-wrap {
+    margin-top: 2px;
   }
 
   /* --- CONTROLS --- */
@@ -126,11 +136,16 @@
   .right { grid-column: 3; grid-row: 2; }
   .down { grid-column: 2; grid-row: 3; }
 
-  #attack {
-    width: clamp(74px, 19vw, 92px);
-    height: clamp(74px, 19vw, 92px);
-    margin: 0 4px 6px 0;
+  .action-buttons {
+    display: flex;
+    gap: 4px;
     pointer-events: auto;
+  }
+  .action-btn {
+    position: relative;
+    width: clamp(56px, 16vw, 78px);
+    height: clamp(56px, 16vw, 78px);
+    margin: 0 4px 6px 0;
     background: transparent no-repeat center / contain;
     border: none;
     outline: none;
@@ -139,7 +154,7 @@
     transition: transform .06s ease, filter .06s ease;
     image-rendering: pixelated;
   }
-  #attack:active, #attack.active {
+  .action-btn:active, .action-btn.active {
     transform: translateY(4px);
     filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)) brightness(0.9);
   }
@@ -150,8 +165,13 @@
 <div class="hud">
 
   <div class="top-left-hud">
-    <div class="player-health-wrap">
-      <canvas id="player-health-canvas" width="280" height="56" role="img" aria-label="Player health"></canvas>
+    <div class="player-resource-bars">
+      <div class="player-health-wrap">
+        <canvas id="player-health-canvas" class="resource-canvas" width="280" height="56" role="img" aria-label="Player health"></canvas>
+      </div>
+      <div class="player-mana-wrap">
+        <canvas id="player-mana-canvas" class="resource-canvas" width="280" height="56" role="img" aria-label="Player mana"></canvas>
+      </div>
     </div>
   </div>
 
@@ -170,7 +190,10 @@
       <button class="dpad-btn right" data-dir="right" aria-label="Move right"></button>
       <button class="dpad-btn down" data-dir="down" aria-label="Move down"></button>
     </div>
-    <button id="attack" aria-label="Attack" title="Attack"></button>
+    <div class="action-buttons" aria-label="Combat controls">
+      <button id="attack" class="action-btn" aria-label="Attack with sword" title="Sword attack"></button>
+      <button id="fireball" class="action-btn" aria-label="Cast fireball" title="Cast fireball"></button>
+    </div>
   </div>
 </div>
 

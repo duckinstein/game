@@ -1,4 +1,53 @@
 import { tryLoadImage } from './globals.js';
+export const waterSheet = { image: null, ready: false, frameSize: 16 };
+tryLoadImage(["./Sprout%20Lands%20color%20pallet/Water.png"], (img) => {
+  waterSheet.image = img;
+  waterSheet.frameSize = img.naturalWidth / 4;
+  waterSheet.ready = true;
+});
+
+const PONDS = [
+  { x: -7, y: 2, rx: 2, ry: 1 },
+  { x: 7, y: -6, rx: 2, ry: 1 },
+  { x: 18, y: 14, rx: 2, ry: 2 },
+  { x: -17, y: -12, rx: 2, ry: 2 },
+  { x: 6, y: 19, rx: 2, ry: 1 },
+  { x: 28, y: 6, rx: 2, ry: 1 }
+];
+
+const waterTiles = new Set();
+for (const pond of PONDS) {
+  const radiusX = pond.rx + 0.5;
+  const radiusY = pond.ry + 0.5;
+  for (let y = pond.y - Math.ceil(radiusY); y <= pond.y + Math.ceil(radiusY); y++) {
+    for (let x = pond.x - Math.ceil(radiusX); x <= pond.x + Math.ceil(radiusX); x++) {
+      const dx = (x - pond.x) / radiusX;
+      const dy = (y - pond.y) / radiusY;
+      if (dx * dx + dy * dy <= 1) waterTiles.add(`${x},${y}`);
+    }
+  }
+}
+
+export function isWaterTile(tx, ty) {
+  return waterTiles.has(`${tx},${ty}`);
+}
+
+export function getPondAt(tx, ty) {
+  if (!isWaterTile(tx, ty)) return null;
+  return PONDS.find(pond => {
+    const dx = (tx - pond.x) / (pond.rx + 0.5);
+    const dy = (ty - pond.y) / (pond.ry + 0.5);
+    return dx * dx + dy * dy <= 1;
+  }) ?? null;
+}
+
+export function getWaterDecor(tx, ty) {
+  if (!isWaterTile(tx, ty)) return null;
+  const hash = Math.abs(Math.sin(tx * 12.9898 + ty * 78.233) * 43758.5453) % 1;
+  if (hash < 0.12) return "lily";
+  if (hash < 0.18) return "flower";
+  return null;
+}
 
 export const grassSheet = {
   image: null,
