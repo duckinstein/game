@@ -34,12 +34,7 @@ export const pondDecorSprites = {
   flower: { sx: 112, sy: 32, sw: 16, sh: 16 }
 };
 
-tryLoadImage([
-  "./nature.png", "./Nature.png",
-  "./Basic Grass Biom things 1.png",
-  "./basic_grass_biom_things_1.png",
-  "./objects.png"
-], (img) => {
+tryLoadImage(["./assets/world/objects/nature-atlas.png"], (img) => {
   objectsSheet.image = img;
   objectsSheet.u = img.naturalWidth / 9;
   objectsSheet.ready = true;
@@ -47,7 +42,7 @@ tryLoadImage([
 
 export const coinSheet = { ready: false, frames: [] };
 
-tryLoadImage(["./coins.png", "./coin.png"], (img) => {
+tryLoadImage(["./assets/ui/coins.png"], (img) => {
   const oc = document.createElement("canvas");
   oc.width = img.naturalWidth;
   oc.height = img.naturalHeight;

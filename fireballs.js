@@ -17,7 +17,7 @@ const FIREBALL_DIRECTIONS = {
   [DIR.UP]: { x: 0, y: -1 }
 };
 
-const FIREBALL_IMAGE = "./effects/fireball.gif";
+const FIREBALL_IMAGE = "./assets/effects/fireball.gif";
 const fireballImage = new Image();
 fireballImage.src = FIREBALL_IMAGE;
 

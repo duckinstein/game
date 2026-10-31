@@ -49,7 +49,7 @@ export function loadVillains() {
   if (villainsLoadPromise) return villainsLoadPromise;
 
   villainsLoadPromise = (async () => {
-    const response = await fetch(new URL("./villain/villains.json", import.meta.url));
+    const response = await fetch(new URL("./assets/characters/villains/villains.json", import.meta.url));
     if (!response.ok) {
       throw new Error(`Unable to load villain roster: ${response.status} ${response.statusText}`);
     }
@@ -72,7 +72,7 @@ export function loadVillains() {
       fileNames.add(entry.fileName);
 
       const sheetPath = suffix => new URL(
-        `./villain/${entry.fileName}_${suffix}.png`,
+        `./assets/characters/villains/${entry.fileName}_${suffix}.png`,
         import.meta.url
       ).href;
       const [walk, attack, die] = await Promise.all([

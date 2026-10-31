@@ -1,6 +1,6 @@
 import { tryLoadImage } from './globals.js';
 export const waterSheet = { image: null, ready: false, frameSize: 16 };
-tryLoadImage(["./Sprout%20Lands%20color%20pallet/Water.png"], (img) => {
+tryLoadImage(["./assets/world/terrain/water.png"], (img) => {
   waterSheet.image = img;
   waterSheet.frameSize = img.naturalWidth / 4;
   waterSheet.ready = true;
@@ -67,7 +67,7 @@ export const grassSheet = {
   ]
 };
 
-tryLoadImage(["./grass.png", "./Grass.png", "./ground.png"], (img) => {
+tryLoadImage(["./assets/world/terrain/grass.png"], (img) => {
   grassSheet.image = img;
   grassSheet.u = img.naturalWidth / 11;
   grassSheet.ready = true;
@@ -88,7 +88,7 @@ export const hillsSheet = {
   }
 };
 
-tryLoadImage(["./hills.png", "./Hills.png", "./highlands.png", "./cliffs.png"], (img) => {
+tryLoadImage(["./assets/world/terrain/highlands.png"], (img) => {
   hillsSheet.image = img;
   hillsSheet.u = img.naturalWidth / 11;
   hillsSheet.ready = true;

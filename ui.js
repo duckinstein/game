@@ -83,7 +83,7 @@ function findTightBounds(data, W, x1, y1, x2, y2) {
 }
 
 // --- 3. LOAD & PARSE PLAYER_HP.PNG (Player Health Bar - 2 cols x 3 rows) ---
-tryLoadImage(["./player_hp.png", "./0-health bar.png"], (img) => {
+tryLoadImage(["./assets/ui/player-health.png", "./assets/ui/legacy/player-health.png"], (img) => {
   const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
   playerHealthSheet.canvas = canvas;
   playerHealthSheet.frames = [];
@@ -108,7 +108,7 @@ tryLoadImage(["./player_hp.png", "./0-health bar.png"], (img) => {
 });
 
 // --- 4. LOAD & PARSE ENEMY_HEALTH.PNG (Enemy Health Bar - 11 vertical rows) ---
-tryLoadImage(["./enemy_health.png", "./enemy_hp.png", "./7-health bar.png", "./dreamstime.png", "./hp.png"], (img) => {
+tryLoadImage(["./assets/ui/enemy-health.png", "./assets/ui/legacy/enemy-health.png"], (img) => {
   const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
   enemyHealthSheet.canvas = canvas;
   enemyHealthSheet.frames = [];
@@ -143,7 +143,7 @@ tryLoadImage(["./enemy_health.png", "./enemy_hp.png", "./7-health bar.png", "./d
 });
 
 // --- 5. LOAD & PARSE UI.PNG (3x3 Controls Grid) ---
-tryLoadImage(["./ui.png", "./UI.png", "./buttons.png", "./controls.png"], (img) => {
+tryLoadImage(["./assets/ui/controls-and-hud.png"], (img) => {
   const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
   function getTrimmed(c, r) {
     const x1 = Math.floor(c * W / 3);
@@ -173,7 +173,7 @@ tryLoadImage(["./ui.png", "./UI.png", "./buttons.png", "./controls.png"], (img) 
 });
 
 // --- 6. LOAD & COMPOSITE ATTACK BUTTON (Sword inside Circle) ---
-tryLoadImage(["./attack_btn.png", "./attack_button.png", "./sword.png", "./attack.png"], (img) => {
+tryLoadImage(["./assets/ui/attack-button.png"], (img) => {
   const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
 
   const splitX = Math.floor(W * 0.58);
@@ -340,7 +340,7 @@ export function updateFireballButton() {
         drawProceduralCircle(canvas.getContext("2d"), 72);
         return canvas.toDataURL();
       })();
-  fireballBtn.style.backgroundImage = `url("./effects/fireball.gif"), url("${circleUrl}")`;
+  fireballBtn.style.backgroundImage = `url("./assets/effects/fireball.gif"), url("${circleUrl}")`;
   fireballBtn.style.backgroundSize = "68% auto, 100% 100%";
   fireballBtn.style.backgroundPosition = "center";
   fireballBtn.style.backgroundRepeat = "no-repeat";

@@ -3,8 +3,8 @@ import { isHighlandPlateau, isCliff, getTileElevation, isWaterTile } from './wor
 import { canStep, checkCoinPickup, consumeBerryAt, consumeMushroomAt, particles } from './props.js';
 import { updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
 
-export const walk = loadSheet("./walk_sheet.png");
-export const attack = loadSheet("./attack_sheet.png");
+export const walk = loadSheet("./assets/characters/player/walk.png");
+export const attack = loadSheet("./assets/characters/player/attack.png");
 
 export const STEP_DURATION = 0.20;
 export const FOOT_OFFSET_Y = 1.0;
