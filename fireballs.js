@@ -41,6 +41,7 @@ export function launchFireball(actor, owner = "player") {
     dirX: direction.x,
     dirY: direction.y,
     owner,
+    enemyVariant: owner === "enemy" ? actor.variant : null,
     age: 0,
     elevation: getTileElevation(Math.round(actor.currentX), Math.round(actor.currentY)),
     removed: false
@@ -168,13 +169,14 @@ export function drawFireballVisuals(ctx) {
     const pulse = 0.92 + 0.12 * Math.sin(phase);
     const flicker = 0.82 + 0.18 * Math.sin(phase * 1.7);
     const enemyShot = fireball.owner === "enemy";
-    const glowColor = enemyShot ? "157, 91, 220" : "255, 104, 24";
+    const blackShot = enemyShot && fireball.enemyVariant === 1;
+    const glowColor = blackShot ? "66, 32, 90" : enemyShot ? "157, 91, 220" : "255, 104, 24";
 
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.atan2(fireball.dirY, fireball.dirX));
     ctx.globalAlpha = flicker;
-    ctx.globalCompositeOperation = "lighter";
+    ctx.globalCompositeOperation = blackShot ? "source-over" : "lighter";
     const glow = ctx.createRadialGradient(0, 0, width * 0.06, 0, 0, width * 0.72);
     glow.addColorStop(0, `rgba(${glowColor}, 0.7)`);
     glow.addColorStop(0.35, `rgba(${glowColor}, 0.34)`);
@@ -185,9 +187,10 @@ export function drawFireballVisuals(ctx) {
     ctx.fill();
 
     ctx.globalCompositeOperation = "source-over";
-    ctx.shadowColor = enemyShot ? "#a764e8" : "#ff742b";
+    ctx.shadowColor = blackShot ? "#321748" : enemyShot ? "#a764e8" : "#ff742b";
     ctx.shadowBlur = globals.tile * (0.8 + 0.35 * (1 + Math.sin(phase)));
-    if (enemyShot) ctx.filter = "hue-rotate(260deg) saturate(1.8) brightness(1.08)";
+    if (blackShot) ctx.filter = "grayscale(1) brightness(0.15) contrast(1.4)";
+    else if (enemyShot) ctx.filter = "hue-rotate(260deg) saturate(1.8) brightness(1.08)";
     ctx.drawImage(
       fireballImage,
       -width * pulse / 2,

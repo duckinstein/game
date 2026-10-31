@@ -19,6 +19,13 @@ function loadVillainSheet(paths, cols = 4, rows = 4) {
 export const villainWalk = loadVillainSheet(["./villain/1_walk.png", "./1_walk.png"], 4, 4);
 export const villainAttack = loadVillainSheet(["./villain/1_attack.png", "./1_attack.png"], 4, 4);
 export const villainDie = loadVillainSheet(["./villain/1_die.png", "./1_die.png"], 4, 1);
+export const villain2Walk = loadVillainSheet(["./villain/2_walk.png"], 4, 4);
+export const villain2Attack = loadVillainSheet(["./villain/2_attack.png"], 4, 4);
+export const villain2Die = loadVillainSheet(["./villain/2_die.png"], 4, 1);
+const VILLAINS = [
+  { walk: villainWalk, attack: villainAttack, die: villainDie },
+  { walk: villain2Walk, attack: villain2Attack, die: villain2Die }
+];
 
 const MAX_ENEMIES = 5;
 const AGGRO_RANGE = 9.0;
@@ -30,6 +37,7 @@ const DIE_FRAME_TIME = 180;
 const CORPSE_LINGER_TIME = 3.0;
 
 export const enemies = [];
+let nextEnemyVariant = 0;
 
 export function isSolidEnemyAt(tx, ty) {
   return enemies.some(e => {
@@ -189,8 +197,9 @@ function tryEatEnemyBerry(enemy) {
   return true;
 }
 
-export function createEnemy(tx, ty) {
+export function createEnemy(tx, ty, variant = 0) {
   return {
+    variant,
     tileX: tx, tileY: ty,
     targetX: tx, targetY: ty,
     currentX: tx, currentY: ty,
@@ -222,6 +231,7 @@ export function createEnemy(tx, ty) {
 
 export function initEnemies(player) {
   enemies.length = 0;
+  nextEnemyVariant = 0;
   for (let i = 0; i < MAX_ENEMIES; i++) {
     spawnEnemyAround(player);
   }
@@ -239,7 +249,7 @@ function spawnEnemyAround(player) {
       const occupiedByPlayer = player && ((player.tileX === tx && player.tileY === ty) ||
         (player.isMoving && player.targetX === tx && player.targetY === ty));
       if (!occupied && !occupiedByPlayer) {
-        enemies.push(createEnemy(tx, ty));
+        enemies.push(createEnemy(tx, ty, nextEnemyVariant++ % 2));
         return;
       }
     }
@@ -492,7 +502,8 @@ export function checkPlayerAttackHit(player) {
 }
 
 export function drawEnemy(ctx, enemy) {
-  let sheet = villainWalk;
+  const villain = VILLAINS[enemy.variant === 1 ? 1 : 0];
+  let sheet = villain.walk;
   let frameX = 0;
   let frameY = 0;
   let flip = false;
@@ -510,19 +521,19 @@ export function drawEnemy(ctx, enemy) {
   const screenY = (enemy.currentY + 1.0 - elev * 0.6) * globals.tile - globals.cameraY;
 
   if (enemy.state === "DYING" || enemy.state === "DEAD") {
-    sheet = villainDie;
+    sheet = villain.die;
     frameX = enemy.dieFrame;
     frameY = 0;
     flip = false;
   } else if (enemy.state === "ATTACK") {
-    sheet = villainAttack;
+    sheet = villain.attack;
     frameX = enemy.attackFrame;
     if (enemy.dir === DIR.DOWN) { frameY = 0; }
     else if (enemy.dir === DIR.LEFT) { frameY = 1; }
     else if (enemy.dir === DIR.RIGHT) { frameY = 1; flip = true; }
     else if (enemy.dir === DIR.UP) { frameY = 3; }
   } else {
-    sheet = villainWalk;
+    sheet = villain.walk;
     frameX = enemy.isMoving ? enemy.walkFrame : 0;
     if (enemy.dir === DIR.DOWN) { frameY = 0; }
     else if (enemy.dir === DIR.LEFT) { frameY = 1; }
