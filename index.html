@@ -29,7 +29,7 @@
       max(14px, env(safe-area-inset-left));
   }
 
-  /* --- TOP-RIGHT HUD (Enlarged, Clear & Flush) --- */
+  /* --- TOP-RIGHT HUD --- */
   .top-right-hud {
     position: absolute;
     top: max(14px, env(safe-area-inset-top));
@@ -66,23 +66,28 @@
 
   .coin-sprite-edge {
     position: absolute;
-    right: -13px;
+    right: -14px;
     top: 50%;
     transform: translateY(-50%);
-    width: 32px;
-    height: 32px;
+    width: 50px;
+    height: 50px;
     image-rendering: pixelated;
   }
 
-  /* Much larger, clearer player health bar */
+  .top-left-hud {
+    position: absolute;
+    top: max(14px, env(safe-area-inset-top));
+    left: max(14px, env(safe-area-inset-left));
+  }
+
   .player-health-wrap {
     image-rendering: pixelated;
     filter: drop-shadow(0 4px 10px rgba(0,0,0,.65));
   }
 
   #player-health-canvas {
-    width: 240px;
-    height: 46px;
+    width: min(168px, 28.8vw);
+    height: auto;
     display: block;
     image-rendering: pixelated;
   }
@@ -97,9 +102,9 @@
   }
   .dpad {
     display: grid;
-    grid-template-columns: repeat(3, clamp(48px, 13vw, 64px));
-    grid-template-rows: repeat(3, clamp(48px, 13vw, 64px));
-    gap: 6px;
+    grid-template-columns: repeat(3, clamp(50px, 13.65vw, 67px));
+    grid-template-rows: repeat(3, clamp(50px, 13.65vw, 67px));
+    gap: 3px;
     pointer-events: auto;
   }
   .dpad-btn {
@@ -144,16 +149,17 @@
 <canvas id="game" aria-label="Sprout Lands Canvas RPG"></canvas>
 <div class="hud">
 
+  <div class="top-left-hud">
+    <div class="player-health-wrap">
+      <canvas id="player-health-canvas" width="280" height="56" role="img" aria-label="Player health"></canvas>
+    </div>
+  </div>
+
   <div class="top-right-hud">
     <!-- Golden Box with Coin Sprite on Right Edge -->
     <div class="golden-coin-box">
       <span class="coin-text" id="coin-count">0</span>
       <img id="coin-icon-img" class="coin-sprite-edge" alt="Coin">
-    </div>
-
-    <!-- Larger, Clear Player Health Bar -->
-    <div class="player-health-wrap">
-      <canvas id="player-health-canvas" width="240" height="46"></canvas>
     </div>
   </div>
 

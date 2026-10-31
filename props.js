@@ -12,9 +12,9 @@ export const objectsSheet = {
     STUMP_1:      { sx: 48, sy: 32, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
     STUMP_2:      { sx: 64, sy: 32, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
     ROCK_BIG:     { sx: 112, sy: 16, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
-    ROCK_SMALL:   { sx: 96, sy: 16, sw: 16, sh: 16, wUnits: 1, hUnits: 0.8, footOffsetY: 0.6, solid: true },
-    BUSH_REGULAR: { sx: 0,  sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
-    BUSH_BERRY:   { sx: 64, sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
+    ROCK_SMALL:   { sx: 96, sy: 16, sw: 16, sh: 16, wUnits: 1, hUnits: 0.8, footOffsetY: 0.6, solid: false },
+    BUSH_REGULAR: { sx: 0,  sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: false },
+    BUSH_BERRY:   { sx: 64, sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: false },
     MUSHROOM:     { sx: 80, sy: 0,  sw: 16, sh: 16, wUnits: 1, hUnits: 0.8, footOffsetY: 0.5, solid: false },
     SUNFLOWER:    { sx: 128, sy: 32, sw: 16, sh: 32, wUnits: 1, hUnits: 2.0, footOffsetY: 1.8, solid: false }
   }

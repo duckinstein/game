@@ -80,8 +80,8 @@ function findTightBounds(data, W, x1, y1, x2, y2) {
   return { sx: minX, sy: minY, sw: maxX - minX + 1, sh: maxY - minY + 1 };
 }
 
-// --- 3. LOAD & PARSE 360.PNG (Player Health Bar - 2 cols x 3 rows) ---
-tryLoadImage(["./360.png", "./360_F.png", "./player_health.png", "./player_hp.png", "./0-health bar.png"], (img) => {
+// --- 3. LOAD & PARSE PLAYER_HP.PNG (Player Health Bar - 2 cols x 3 rows) ---
+tryLoadImage(["./player_hp.png", "./0-health bar.png"], (img) => {
   const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
   playerHealthSheet.canvas = canvas;
   playerHealthSheet.frames = [];
@@ -142,11 +142,12 @@ tryLoadImage(["./enemy_health.png", "./enemy_hp.png", "./7-health bar.png", "./d
 // --- 5. LOAD & PARSE UI.PNG (3x3 Controls Grid) ---
 tryLoadImage(["./ui.png", "./UI.png", "./buttons.png", "./controls.png"], (img) => {
   const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
-  const cellW = Math.floor(W / 3);
-  const cellH = Math.floor(H / 3);
-
   function getTrimmed(c, r) {
-    const b = findTightBounds(data, W, c * cellW, r * cellH, (c + 1) * cellW - 1, (r + 1) * cellH - 1);
+    const x1 = Math.floor(c * W / 3);
+    const y1 = Math.floor(r * H / 3);
+    const x2 = Math.floor((c + 1) * W / 3) - 1;
+    const y2 = Math.floor((r + 1) * H / 3) - 1;
+    const b = findTightBounds(data, W, x1, y1, x2, y2);
     if (!b) return null;
     const oc = document.createElement("canvas");
     oc.width = b.sw; oc.height = b.sh;
@@ -172,9 +173,9 @@ tryLoadImage(["./ui.png", "./UI.png", "./buttons.png", "./controls.png"], (img) 
 tryLoadImage(["./attack_btn.png", "./attack_button.png", "./sword.png", "./attack.png"], (img) => {
   const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
 
-  // If sword is on left half and circle on right half
-  const swordBounds = findTightBounds(data, W, 0, 0, Math.floor(W * 0.6), H - 1);
-  const circleBounds = findTightBounds(data, W, Math.floor(W * 0.4), 0, W - 1, H - 1);
+  const splitX = Math.floor(W * 0.58);
+  const swordBounds = findTightBounds(data, W, 0, 0, splitX - 1, H - 1);
+  const circleBounds = findTightBounds(data, W, splitX, 0, W - 1, H - 1);
 
   const btnCanvas = document.createElement("canvas");
   btnCanvas.width = 72; btnCanvas.height = 72;
@@ -205,8 +206,11 @@ tryLoadImage(["./attack_btn.png", "./attack_button.png", "./sword.png", "./attac
     }
     sctx.putImageData(sData, 0, 0);
 
-    const swordSize = 42;
-    bctx.drawImage(sc, Math.round((72 - swordSize) / 2), Math.round((72 - swordSize) / 2) - 1, swordSize, swordSize);
+    const swordSize = 52;
+    const swordScale = Math.min(swordSize / sc.width, swordSize / sc.height);
+    const swordW = Math.round(sc.width * swordScale);
+    const swordH = Math.round(sc.height * swordScale);
+    bctx.drawImage(sc, Math.round((72 - swordW) / 2), Math.round((72 - swordH) / 2) - 1, swordW, swordH);
   } else {
     drawProceduralSword(bctx, 72);
   }
@@ -349,12 +353,13 @@ export function updatePlayerHUDHealth(currentHp, maxHp) {
 
   if (playerHealthSheet.ready && playerHealthSheet.frames[stage]) {
     const f = playerHealthSheet.frames[stage];
-    const aspect = f.sw / f.sh;
-    const destH = canvas.height;
-    const destW = Math.round(destH * aspect);
-    const destX = canvas.width - destW; // Right-aligned flush with coin box
+    const scale = Math.min(canvas.width / f.sw, canvas.height / f.sh);
+    const destW = Math.round(f.sw * scale);
+    const destH = Math.round(f.sh * scale);
+    const destX = Math.round((canvas.width - destW) / 2);
+    const destY = Math.round((canvas.height - destH) / 2);
 
-    ctx.drawImage(playerHealthSheet.canvas, f.sx, f.sy, f.sw, f.sh, destX, 0, destW, destH);
+    ctx.drawImage(playerHealthSheet.canvas, f.sx, f.sy, f.sw, f.sh, destX, destY, destW, destH);
     return;
   }
 
