@@ -89,7 +89,10 @@ export function loadVillains() {
   return villainsLoadPromise;
 }
 
-const MAX_ENEMIES = 5;
+const MAX_ENEMIES = 6;
+const SPAWN_MARGIN_TILES = 2;
+const RECYCLE_MARGIN_TILES = 10;
+const MIN_SPAWN_DISTANCE = 3;
 const AGGRO_RANGE = 9.0;
 const RANGED_RANGE = 7.0;
 const GUARD_RADIUS = 4;
@@ -99,7 +102,7 @@ const DIE_FRAME_TIME = 180;
 const CORPSE_LINGER_TIME = 3.0;
 
 export const enemies = [];
-let nextEnemyVariant = 0;
+let spawnGeneration = 0;
 
 export function isSolidEnemyAt(tx, ty) {
   return enemies.some(e => {
@@ -121,6 +124,11 @@ const DIR_VECTORS = [
 function findNextPathDirection(enemy, targetX, targetY, player) {
   const startKey = `${enemy.tileX},${enemy.tileY}`;
   const targetsPlayer = targetX === player.tileX && targetY === player.tileY;
+  const searchLimit = Math.max(
+    10,
+    Math.abs(targetX - enemy.tileX) + 1,
+    Math.abs(targetY - enemy.tileY) + 1
+  );
   const goalKeys = targetsPlayer
     ? new Set(DIR_VECTORS.map(vector => `${targetX + vector.x},${targetY + vector.y}`))
     : new Set([`${targetX},${targetY}`]);
@@ -140,7 +148,7 @@ function findNextPathDirection(enemy, targetX, targetY, player) {
       const y = current.y + vector.y;
       const key = `${x},${y}`;
       if (previous.has(key)) continue;
-      if (Math.abs(x - enemy.tileX) > 10 || Math.abs(y - enemy.tileY) > 10) continue;
+      if (Math.abs(x - enemy.tileX) > searchLimit || Math.abs(y - enemy.tileY) > searchLimit) continue;
 
       const isGoal = goalKeys.has(key);
       const occupiedByEnemy = enemies.some(other => other !== enemy && other.active &&
@@ -288,38 +296,117 @@ export function createEnemy(tx, ty, variant = 0) {
     guardX: tx,
     guardY: ty,
     patrolTimer: 0.8 + Math.random() * 2,
+    entering: false,
     active: true
   };
 }
 
 export function initEnemies(player) {
   enemies.length = 0;
-  nextEnemyVariant = 0;
-  for (let i = 0; i < MAX_ENEMIES; i++) {
-    spawnEnemyAround(player);
+  spawnGeneration++;
+
+  const variants = Array.from(
+    { length: MAX_ENEMIES },
+    (_, index) => index % VILLAINS.length
+  );
+  for (let i = variants.length - 1; i > 0; i--) {
+    const swapIndex = Math.floor(Math.random() * (i + 1));
+    [variants[i], variants[swapIndex]] = [variants[swapIndex], variants[i]];
   }
-}
 
-function spawnEnemyAround(player) {
-  for (let attempts = 0; attempts < 40; attempts++) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 4 + Math.random() * 2;
-    const tx = Math.round((player ? player.tileX : 0) + Math.cos(angle) * dist);
-    const ty = Math.round((player ? player.tileY : 0) + Math.sin(angle) * dist);
-
-    if (canStep(tx, ty, tx, ty)) {
-      const occupied = enemies.some(e => e.active && e.state !== "DYING" && e.tileX === tx && e.tileY === ty);
-      const occupiedByPlayer = player && ((player.tileX === tx && player.tileY === ty) ||
-        (player.isMoving && player.targetX === tx && player.targetY === ty));
-      if (!occupied && !occupiedByPlayer) {
-        enemies.push(createEnemy(tx, ty, nextEnemyVariant++ % VILLAINS.length));
-        return;
-      }
+  for (const variant of variants) {
+    if (!spawnEnemyNearPlayer(player, variant)) {
+      console.warn(`Unable to find a valid nearby spawn tile for villain "${VILLAINS[variant].fileName}".`);
     }
   }
 }
 
+function getSpawnBounds() {
+  const tileSize = globals.tile || 48;
+  const cameraX = globals.cameraX;
+  const cameraY = globals.cameraY;
+  return {
+    minX: Math.floor(cameraX / tileSize) - SPAWN_MARGIN_TILES,
+    minY: Math.floor(cameraY / tileSize) - SPAWN_MARGIN_TILES,
+    maxX: Math.ceil((cameraX + globals.viewW) / tileSize) + SPAWN_MARGIN_TILES,
+    maxY: Math.ceil((cameraY + globals.viewH) / tileSize) + SPAWN_MARGIN_TILES,
+    cameraX,
+    cameraY,
+    tileSize
+  };
+}
+
+function findNearbySpawnPosition(player, excludedEnemy = null) {
+  const { minX, minY, maxX, maxY, cameraX, cameraY, tileSize } = getSpawnBounds();
+  const candidates = [];
+  for (let ty = minY; ty < maxY; ty++) {
+    for (let tx = minX; tx < maxX; tx++) {
+      if (Math.hypot(tx - player.tileX, ty - player.tileY) < MIN_SPAWN_DISTANCE) continue;
+      const screenX = (tx + 0.5) * tileSize - cameraX;
+      const screenY = (ty + 0.5) * tileSize - cameraY;
+      const outsideViewport = screenX < -tileSize || screenX > globals.viewW + tileSize ||
+        screenY < -tileSize || screenY > globals.viewH + tileSize;
+      if (!outsideViewport) continue;
+
+      const occupied = enemies.some(enemy =>
+        enemy !== excludedEnemy && enemy.active && enemy.state !== "DYING" &&
+        ((enemy.tileX === tx && enemy.tileY === ty) ||
+          (enemy.state !== "DEAD" && enemy.isMoving &&
+            enemy.targetX === tx && enemy.targetY === ty))
+      );
+      const occupiedByPlayer = (player.tileX === tx && player.tileY === ty) ||
+        (player.isMoving && player.targetX === tx && player.targetY === ty);
+      if (!occupied && !occupiedByPlayer && canStep(tx, ty, tx, ty)) {
+        candidates.push({ x: tx, y: ty });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function spawnEnemyNearPlayer(player, variant) {
+  const position = findNearbySpawnPosition(player);
+  if (!position) return false;
+  const enemy = createEnemy(position.x, position.y, variant);
+  enemy.entering = true;
+  enemies.push(enemy);
+  return true;
+}
+
+function keepEnemiesNearPlayer(player) {
+  const tileSize = globals.tile || 48;
+  for (const enemy of enemies) {
+    if (!enemy.active || enemy.state === "DYING" || enemy.state === "DEAD") continue;
+    const screenX = (enemy.currentX + 0.5) * tileSize - globals.cameraX;
+    const screenY = (enemy.currentY + 0.5) * tileSize - globals.cameraY;
+    if (screenX >= -RECYCLE_MARGIN_TILES * tileSize &&
+        screenX <= globals.viewW + RECYCLE_MARGIN_TILES * tileSize &&
+        screenY >= -RECYCLE_MARGIN_TILES * tileSize &&
+        screenY <= globals.viewH + RECYCLE_MARGIN_TILES * tileSize) {
+      continue;
+    }
+
+    const position = findNearbySpawnPosition(player, enemy);
+    if (!position) continue;
+    const replacement = createEnemy(position.x, position.y, enemy.variant);
+    replacement.hp = enemy.hp;
+    replacement.entering = true;
+    Object.assign(enemy, replacement);
+  }
+}
+
+function isEnemyOnScreen(enemy) {
+  const tileSize = globals.tile || 48;
+  const screenX = (enemy.currentX + 0.5) * tileSize - globals.cameraX;
+  const screenY = (enemy.currentY + 0.5) * tileSize - globals.cameraY;
+  return screenX >= 0 && screenX < globals.viewW && screenY >= 0 && screenY < globals.viewH;
+}
+
 export function updateEnemies(dt, player, tryRangedAttack) {
+  keepEnemiesNearPlayer(player);
+
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     e.hitFlashTimer = Math.max(0, e.hitFlashTimer - dt);
@@ -328,7 +415,13 @@ export function updateEnemies(dt, player, tryRangedAttack) {
       e.corpseTimer -= dt;
       if (e.corpseTimer <= 0) {
         enemies.splice(i, 1);
-        setTimeout(() => spawnEnemyAround(player), 3000);
+        const generation = spawnGeneration;
+        setTimeout(() => {
+          if (generation !== spawnGeneration) return;
+          if (!spawnEnemyNearPlayer(player, e.variant)) {
+            console.warn(`Unable to respawn villain "${VILLAINS[e.variant].fileName}" near the player.`);
+          }
+        }, 3000);
       }
       continue;
     }
@@ -400,6 +493,15 @@ export function updateEnemies(dt, player, tryRangedAttack) {
         e.currentY = e.tileY + (e.targetY - e.tileY) * e.moveProgress;
       }
       continue;
+    }
+
+    if (e.entering) {
+      if (isEnemyOnScreen(e)) {
+        e.entering = false;
+      } else {
+        const direction = findNextPathDirection(e, player.tileX, player.tileY, player);
+        if (startEnemyStep(e, direction, "CHASE")) continue;
+      }
     }
 
     const dx = player.tileX - e.tileX;

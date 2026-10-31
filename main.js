@@ -7,10 +7,16 @@ import { launchFireball, canFireballReach, updateFireballs, drawFireballVisuals 
 import { updateUIElements, updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
 
 const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const outputCtx = canvas.getContext("2d");
+const sceneCanvas = document.createElement("canvas");
+const ctx = sceneCanvas.getContext("2d");
+const bloomCanvas = document.createElement("canvas");
+const bloomCtx = bloomCanvas.getContext("2d");
 const attackButton = document.getElementById("attack");
 const fireballButton = document.getElementById("fireball");
 const coinCounterEl = document.getElementById("coin-count");
+
+if (!outputCtx || !ctx || !bloomCtx) throw new Error("Unable to initialize the game canvas effects.");
 
 const SPRITE_W_UNITS = 1.6;
 const SPRITE_H_UNITS = 1.6;
@@ -47,7 +53,13 @@ function resize() {
   globals.dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(globals.viewW * globals.dpr);
   canvas.height = Math.round(globals.viewH * globals.dpr);
+  sceneCanvas.width = canvas.width;
+  sceneCanvas.height = canvas.height;
+  bloomCanvas.width = Math.max(1, Math.ceil(globals.viewW / 2));
+  bloomCanvas.height = Math.max(1, Math.ceil(globals.viewH / 2));
   ctx.setTransform(globals.dpr, 0, 0, globals.dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  outputCtx.setTransform(globals.dpr, 0, 0, globals.dpr, 0, 0);
 
   globals.tile = Math.max(32, Math.min(56, Math.floor(Math.min(globals.viewW, globals.viewH) / 10 * 0.75)));
 
@@ -57,11 +69,10 @@ function resize() {
     player.currentX = 0; player.currentY = 0;
     player.initialized = true;
 
-    initEnemies(player);
-
     const foot = getPlayerFootWorldPos();
     globals.cameraX = foot.x - globals.viewW / 2;
     globals.cameraY = foot.y - globals.viewH / 2;
+    initEnemies(player);
   }
   updateCamera();
   updateUIElements();
@@ -94,7 +105,11 @@ function update(dt) {
   updateCamera();
 }
 
-function drawLowGrassTile(tx, ty, x, y) {
+function getBreeze(tx, ty, now) {
+  return Math.sin(now * 0.0007 - tx * 0.22 + ty * 0.31);
+}
+
+function drawLowGrassTile(tx, ty, x, y, now) {
   if (grassSheet.ready && grassSheet.image) {
     const u = grassSheet.u;
     const v = getGrassVariation(tx, ty);
@@ -104,7 +119,11 @@ function drawLowGrassTile(tx, ty, x, y) {
 
     const decor = getGrassDecor(tx, ty);
     if (decor) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.translate(getBreeze(tx, ty, now) * 0.4, 0);
       ctx.drawImage(grassSheet.image, decor.col * u, decor.row * u, u, u, x, y, globals.tile, globals.tile);
+      ctx.restore();
     }
   } else {
     ctx.fillStyle = "#8fc257";
@@ -190,7 +209,7 @@ function drawWorld(now) {
       const x = Math.round(offsetX + c * globals.tile);
       const y = Math.round(offsetY + r * globals.tile);
 
-      drawLowGrassTile(tx, ty, x, y);
+      drawLowGrassTile(tx, ty, x, y, now);
 
       if (isWaterTile(tx, ty)) {
         drawPondTile(tx, ty, x, y, now);
@@ -273,7 +292,7 @@ function drawPlayerSprite(sheet, frameX, frameY, footScreenX, footScreenY) {
   }
 }
 
-function drawMapObject(obj) {
+function drawMapObject(obj, now) {
   if (!objectsSheet.ready || !objectsSheet.image) return;
   const def = obj.def;
   const destW = globals.tile * def.wUnits;
@@ -282,6 +301,20 @@ function drawMapObject(obj) {
   const elev = getTileElevation(obj.tx, obj.ty);
   const screenX = (obj.tx + obj.def.wUnits * 0.5) * globals.tile - globals.cameraX;
   const screenY = (obj.ty + obj.def.footOffsetY - elev * 0.6) * globals.tile - globals.cameraY;
+
+  if (obj.name.startsWith("TREE_") || obj.name.startsWith("BUSH_")) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.translate(screenX, screenY);
+    ctx.rotate(getBreeze(obj.tx, obj.ty, now) * 0.012);
+    ctx.drawImage(
+      objectsSheet.image,
+      def.sx, def.sy, def.sw, def.sh,
+      -destW * 0.5, -destH, destW, destH
+    );
+    ctx.restore();
+    return;
+  }
 
   const drawX = Math.round(screenX - destW * 0.5);
   const drawY = Math.round(screenY - destH);
@@ -342,7 +375,7 @@ function draw(now) {
         renderQueue.push({
           type: "OBJECT",
           footY: obj.footY,
-          draw: () => drawMapObject(obj)
+          draw: () => drawMapObject(obj, now)
         });
       }
     }
@@ -381,6 +414,26 @@ function draw(now) {
     }
     ctx.restore();
   }
+
+  outputCtx.clearRect(0, 0, globals.viewW, globals.viewH);
+  outputCtx.imageSmoothingEnabled = false;
+  outputCtx.drawImage(sceneCanvas, 0, 0, globals.viewW, globals.viewH);
+
+  bloomCtx.clearRect(0, 0, bloomCanvas.width, bloomCanvas.height);
+  bloomCtx.save();
+  bloomCtx.filter = "blur(8px) brightness(1.6) saturate(1.35)";
+  bloomCtx.drawImage(canvas, 0, 0, bloomCanvas.width, bloomCanvas.height);
+  bloomCtx.restore();
+
+  outputCtx.save();
+  outputCtx.globalCompositeOperation = "screen";
+  outputCtx.globalAlpha = 0.3;
+  outputCtx.drawImage(bloomCanvas, 0, 0, globals.viewW, globals.viewH);
+  outputCtx.globalCompositeOperation = "soft-light";
+  outputCtx.globalAlpha = 0.12;
+  outputCtx.fillStyle = "#f8dcff";
+  outputCtx.fillRect(0, 0, globals.viewW, globals.viewH);
+  outputCtx.restore();
 }
 
 function loop(now) {
