@@ -9,23 +9,77 @@ export const objectsSheet = {
   ready: false,
   u: 16,
   types: {
-    TREE_REGULAR: { sx: 16, sy: 0, sw: 32, sh: 32, wUnits: 2, hUnits: 2.2, footOffsetY: 1.8, solid: true },
-    TREE_FRUIT:   { sx: 48, sy: 0, sw: 32, sh: 32, wUnits: 2, hUnits: 2.2, footOffsetY: 1.8, solid: true },
-    TREE_TALL:    { sx: 0,  sy: 0, sw: 16, sh: 32, wUnits: 1, hUnits: 2.2, footOffsetY: 1.8, solid: true },
-    STUMP_1:      { sx: 48, sy: 32, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
-    STUMP_2:      { sx: 64, sy: 32, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
+    TREE_1:       { spriteKey: "tree1", wUnits: 3, hUnits: 4, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
+    TREE_2:       { spriteKey: "tree2", wUnits: 3, hUnits: 4, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
+    TREE_3:       { spriteKey: "tree3", wUnits: 3, hUnits: 3, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
+    TREE_4:       { spriteKey: "tree4", wUnits: 3, hUnits: 3, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
+    STUMP_1:      { spriteKey: "stump1", wUnits: 3, hUnits: 4, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
+    STUMP_2:      { spriteKey: "stump2", wUnits: 3, hUnits: 4, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
+    STUMP_3:      { spriteKey: "stump3", wUnits: 3, hUnits: 4, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
+    STUMP_4:      { spriteKey: "stump4", wUnits: 3, hUnits: 4, footOffsetY: 1, solid: true, collisionOffsetX: 1 },
     ROCK_BIG:     { sx: 112, sy: 16, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: true },
     ROCK_SMALL:   { sx: 96, sy: 16, sw: 16, sh: 16, wUnits: 1, hUnits: 0.8, footOffsetY: 0.6, solid: false },
-    BUSH_REGULAR: { sx: 0,  sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: false },
-    BUSH_BERRY:   { sx: 64, sy: 48, sw: 16, sh: 16, wUnits: 1, hUnits: 1.0, footOffsetY: 0.8, solid: false },
+    BUSH_1:       { spriteKey: "bush1", wUnits: 2, hUnits: 2, footOffsetY: 1, solid: false },
+    BUSH_2:       { spriteKey: "bush2", wUnits: 2, hUnits: 2, footOffsetY: 1, solid: false },
+    BUSH_3:       { spriteKey: "bush3", wUnits: 2, hUnits: 2, footOffsetY: 1, solid: false },
+    BUSH_4:       { spriteKey: "bush4", wUnits: 2, hUnits: 2, footOffsetY: 1, solid: false },
+    BUSH_BERRY:   { spriteKey: "bush3", wUnits: 2, hUnits: 2, footOffsetY: 1, solid: false },
     MUSHROOM:     { sx: 80, sy: 0,  sw: 16, sh: 16, wUnits: 1, hUnits: 0.8, footOffsetY: 0.5, solid: false },
   }
 };
 
+export const objectSprites = {};
+
 const changedObjects = new Map();
 const FOOD_OBJECT_TYPES = ["BUSH_BERRY", "MUSHROOM"];
 const SCENERY_OBJECT_TYPES = Object.keys(objectsSheet.types)
-  .filter(type => !FOOD_OBJECT_TYPES.includes(type));
+  .filter(type => !FOOD_OBJECT_TYPES.includes(type) && !type.startsWith("STUMP_"));
+
+function isObjectTileExcluded(tx, ty) {
+  if ((Math.abs(tx) <= 1 && Math.abs(ty) <= 1) || isCliff(tx, ty) || isStairs(tx, ty) || isWaterTile(tx, ty)) return true;
+
+  const h = getHighlandAt(tx, ty);
+  return h && (tx === h.stairX1 || tx === h.stairX2) && (ty >= h.y1 - 1 && ty <= h.cliffY + 2);
+}
+
+function loadObjectSprite(key, path, frameCount, frameWidth, frameHeight) {
+  const sheet = { image: null, ready: false, frameCount, frameWidth, frameHeight };
+  objectSprites[key] = sheet;
+  tryLoadImage([path], (image) => {
+    if (image.naturalWidth !== frameCount * frameWidth || image.naturalHeight !== frameHeight) {
+      console.error(`Unexpected sprite sheet dimensions for ${path}.`);
+      return;
+    }
+    sheet.image = image;
+    sheet.ready = true;
+  });
+}
+
+for (const [key, file, frameHeight] of [
+  ["tree1", "Tree1.png", 256],
+  ["tree2", "Tree2.png", 256],
+  ["tree3", "Tree3.png", 192],
+  ["tree4", "Tree4.png", 192]
+]) {
+  loadObjectSprite(key, `./assets/world/w2/${file}`, 8, 192, frameHeight);
+}
+
+for (let variant = 1; variant <= 4; variant++) {
+  loadObjectSprite(
+    `bush${variant}`,
+    `./assets/world/w2/Bushe${variant}.png`,
+    8,
+    128,
+    128
+  );
+  loadObjectSprite(
+    `stump${variant}`,
+    `./assets/world/w2/Stump ${variant}.png`,
+    1,
+    192,
+    256
+  );
+}
 
 function objectTypeRoll(tx, ty) {
   const value = Math.sin(tx * 12.9898 + ty * 78.233 + 43.17) * 43758.5453;
@@ -36,6 +90,46 @@ export const pondDecorSprites = {
   lily: { sx: 128, sy: 64, sw: 16, sh: 16 },
   flower: { sx: 112, sy: 32, sw: 16, sh: 16 }
 };
+
+function getGeneratedMapObjectAt(tx, ty) {
+  if (isObjectTileExcluded(tx, ty)) return null;
+  const hVal = Math.sin(tx * 12.9898 + ty * 78.233) * 43758.5453;
+  const rand = Math.abs(hVal - Math.floor(hVal));
+  const key = `${tx},${ty}`;
+  if (changedObjects.has(key)) return changedObjects.get(key);
+
+  if (rand >= 0.04) return null;
+
+  const typeRoll = objectTypeRoll(tx, ty);
+  const foodType = typeRoll < 0.1;
+  const typeKeys = foodType ? FOOD_OBJECT_TYPES : SCENERY_OBJECT_TYPES;
+  const selectionRoll = objectTypeRoll(tx + 137, ty - 251);
+  const typeName = typeKeys[Math.floor(selectionRoll * typeKeys.length)];
+  const def = objectsSheet.types[typeName];
+  return { name: typeName, def, tx, ty, footY: ty + def.footOffsetY, key };
+}
+
+export function isSheepBlockedAt(x, y) {
+  const left = x - 0.5;
+  const right = x + 1.5;
+  const top = y - 1;
+  const bottom = y + 1;
+  for (let ty = Math.floor(top) - 4; ty <= Math.floor(bottom); ty++) {
+    for (let tx = Math.floor(left) - 3; tx <= Math.floor(right); tx++) {
+      const object = getGeneratedMapObjectAt(tx, ty);
+      if (!object) continue;
+
+      const elevation = getTileElevation(object.tx, object.ty) * 0.6;
+      const objectLeft = object.tx;
+      const objectRight = object.tx + object.def.wUnits;
+      const objectTop = object.ty + object.def.footOffsetY - object.def.hUnits - elevation;
+      const objectBottom = object.ty + object.def.footOffsetY - elevation;
+      if (left < objectRight && right > objectLeft &&
+          top < objectBottom && bottom > objectTop) return true;
+    }
+  }
+  return false;
+}
 
 tryLoadImage(["./assets/world/objects/nature-atlas.png"], (img) => {
   objectsSheet.image = img;
@@ -107,28 +201,11 @@ tryLoadImage(["./assets/ui/coins.png"], (img) => {
 });
 
 export function getMapObjectAt(tx, ty) {
-  if ((Math.abs(tx) <= 1 && Math.abs(ty) <= 1) || isCliff(tx, ty) || isStairs(tx, ty) || isWaterTile(tx, ty)) return null;
-
-  const h = getHighlandAt(tx, ty);
-  if (h && (tx === h.stairX1 || tx === h.stairX2) && (ty >= h.y1 - 1 && ty <= h.cliffY + 2)) {
-    return null;
-  }
-
-  const hVal = Math.sin(tx * 12.9898 + ty * 78.233) * 43758.5453;
-  const rand = Math.abs(hVal - Math.floor(hVal));
+  if (isObjectTileExcluded(tx, ty)) return null;
   const key = `${tx},${ty}`;
   if (changedObjects.has(key)) return changedObjects.get(key);
-
-  if (rand < 0.04) {
-    const typeRoll = objectTypeRoll(tx, ty);
-    const foodType = typeRoll < 0.1;
-    const typeKeys = foodType ? FOOD_OBJECT_TYPES : SCENERY_OBJECT_TYPES;
-    const selectionRoll = objectTypeRoll(tx + 137, ty - 251);
-    const typeName = typeKeys[Math.floor(selectionRoll * typeKeys.length)];
-    const def = objectsSheet.types[typeName];
-    const object = { name: typeName, def, tx, ty, footY: ty + def.footOffsetY, key };
-    return getSheepAtWorld(tx + 0.5, ty + 0.5) ?? object;
-  }
+  const object = getGeneratedMapObjectAt(tx, ty);
+  if (object) return getSheepAtWorld(tx + 0.5, ty + 0.5) ?? object;
   return getSheepAtWorld(tx + 0.5, ty + 0.5);
 }
 
@@ -163,16 +240,14 @@ export function damageMapObjectAt(x, y, radius = 0) {
     return damageSheep(object.sheepId);
   }
   if (object.name.startsWith("TREE_")) {
-    const stumpName = object.name === "TREE_TALL" ? "STUMP_1" : "STUMP_2";
+    const stumpName = `STUMP_${object.name.slice("TREE_".length)}`;
     const stumpDef = objectsSheet.types[stumpName];
-    const stumpX = object.tx + Math.floor(object.def.wUnits / 2);
-    const stumpY = object.ty + 1;
     changedObjects.set(object.key, {
       name: stumpName,
       def: stumpDef,
-      tx: stumpX,
-      ty: stumpY,
-      footY: stumpY + stumpDef.footOffsetY,
+      tx: object.tx,
+      ty: object.ty,
+      footY: object.ty + stumpDef.footOffsetY,
       key: object.key
     });
   } else {
@@ -200,11 +275,12 @@ export function hasObjectCollision(tx, ty) {
     for (let dy = -2; dy <= 1; dy++) {
       const obj = getMapObjectAt(tx + dx, ty + dy);
       if (obj && obj.def.solid) {
-        if (obj.def.wUnits === 2) {
-          if ((tx === obj.tx || tx === obj.tx + 1) && (ty === obj.ty + 1)) return true;
-        } else {
-          if (obj.tx === tx && obj.ty === ty) return true;
-        }
+        const collisionX = obj.tx + (obj.def.collisionOffsetX ?? 0);
+        const collisionY = obj.ty + (obj.def.collisionOffsetY ?? 0);
+        const collisionWidth = obj.def.collisionWidth ?? 1;
+        const collisionHeight = obj.def.collisionHeight ?? 1;
+        if (tx >= collisionX && tx < collisionX + collisionWidth &&
+            ty >= collisionY && ty < collisionY + collisionHeight) return true;
       }
     }
   }

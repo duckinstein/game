@@ -1,6 +1,6 @@
 import { globals } from './globals.js';
 import { grassSheet, hillsSheet, waterSheet, resolveHillTile, getGrassVariation, getGrassDecor, getPondAt, getWaterDecor, isWaterTile, getTileElevation } from './world.js';
-import { objectsSheet, pondDecorSprites, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
+import { objectsSheet, objectSprites, pondDecorSprites, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
 import { player, FOOT_OFFSET_Y, pushDir, removeDir, beginAttack, activatePlayerShield, updatePlayer, getPlayerFootWorldPos, clearInputs, losePlayerXP, setPlayerDeathHandler } from './player.js';
 import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit, loadVillains } from './enemies.js';
 import { fireballs, launchFireball, canFireballReach, updateFireballs, drawFireballVisuals, clearFireballs } from './fireballs.js';
@@ -408,23 +408,31 @@ function drawPlayerShield(footScreenX, footScreenY) {
 }
 
 function drawMapObject(obj, now) {
-  if (!objectsSheet.ready || !objectsSheet.image) return;
   const def = obj.def;
+  const sprite = def.spriteKey ? objectSprites[def.spriteKey] : null;
+  const image = sprite ? sprite.image : objectsSheet.image;
+  if ((sprite && !sprite.ready) || (!sprite && !objectsSheet.ready) || !image) return;
+
   const destW = globals.tile * def.wUnits;
   const destH = globals.tile * def.hUnits;
 
   const elev = getTileElevation(obj.tx, obj.ty);
   const screenX = (obj.tx + obj.def.wUnits * 0.5) * globals.tile - globals.cameraX;
   const screenY = (obj.ty + obj.def.footOffsetY - elev * 0.6) * globals.tile - globals.cameraY;
+  const frame = sprite ? Math.floor(now / 150) % sprite.frameCount : 0;
+  const sourceX = sprite ? frame * sprite.frameWidth : def.sx;
+  const sourceY = 0;
+  const sourceW = sprite ? sprite.frameWidth : def.sw;
+  const sourceH = sprite ? sprite.frameHeight : def.sh;
 
   if (obj.name.startsWith("TREE_") || obj.name.startsWith("BUSH_")) {
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.translate(screenX, screenY);
     ctx.rotate(getBreeze(obj.tx, obj.ty, now) * 0.012);
     ctx.drawImage(
-      objectsSheet.image,
-      def.sx, def.sy, def.sw, def.sh,
+      image,
+      sourceX, sourceY, sourceW, sourceH,
       -destW * 0.5, -destH, destW, destH
     );
     ctx.restore();
@@ -436,8 +444,8 @@ function drawMapObject(obj, now) {
 
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(
-    objectsSheet.image,
-    def.sx, def.sy, def.sw, def.sh,
+    image,
+    sourceX, sourceY, sourceW, sourceH,
     drawX, drawY, destW, destH
   );
 }

@@ -1,5 +1,6 @@
 import { globals } from "./globals.js";
 import { getTileElevation, isCliff, isWaterTile } from "./world.js";
+import { isSheepBlockedAt } from "./props.js";
 
 const HERD_REGION_SIZE = 12;
 const HERD_SPAWN_CHANCE = 0.34;
@@ -27,10 +28,21 @@ function regionKey(regionX, regionY) {
 function findHerdPosition(regionX, regionY) {
   const baseX = regionX * HERD_REGION_SIZE + HERD_REGION_SIZE / 2;
   const baseY = regionY * HERD_REGION_SIZE + HERD_REGION_SIZE / 2;
+  const count = 5 + Math.floor(hash(regionX, regionY, 7) * 6);
   for (let attempt = 0; attempt < 36; attempt++) {
     const x = Math.floor(baseX + (hash(regionX, regionY, attempt * 2) - 0.5) * 8);
     const y = Math.floor(baseY + (hash(regionX, regionY, attempt * 2 + 1) - 0.5) * 8);
     if (isCliff(x, y) || isWaterTile(x, y)) continue;
+    let blocked = false;
+    for (let index = 0; index < count; index++) {
+      const offsetX = (hash(regionX, regionY, 20 + index) - 0.5) * 4.6;
+      const offsetY = (hash(regionX, regionY, 60 + index) - 0.5) * 1.6;
+      if (isSheepBlockedAt(x + offsetX, y + offsetY)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) continue;
     return { x, y };
   }
   return null;
@@ -148,14 +160,19 @@ export function updateSheep(dt, minX, maxX, minY, maxY) {
       herds.delete(key);
       continue;
     }
-    herd.x += herd.direction * herd.speed * dt;
-    if (herd.x >= herd.maxX) {
-      herd.x = herd.maxX;
+    let nextX = herd.x + herd.direction * herd.speed * dt;
+    if (nextX >= herd.maxX) {
+      nextX = herd.maxX;
       herd.direction = -1;
-    } else if (herd.x <= herd.minX) {
-      herd.x = herd.minX;
+    } else if (nextX <= herd.minX) {
+      nextX = herd.minX;
       herd.direction = 1;
     }
+    if (herd.sheep.some(sheep => isSheepBlockedAt(nextX + sheep.offsetX, herd.y + sheep.offsetY))) {
+      herd.direction = nextX >= herd.maxX ? -1 : nextX <= herd.minX ? 1 : -herd.direction;
+      nextX = herd.x;
+    }
+    herd.x = nextX;
     for (const sheep of herd.sheep) {
       sheep.x = herd.x + sheep.offsetX;
       sheep.y = herd.y + sheep.offsetY;
