@@ -4,8 +4,6 @@ import { globals, tryLoadImage } from './globals.js';
 export const uiSheet = { ready: false, frames: {} };
 export const playerHealthSheet = { ready: false, frames: [], canvas: null };
 export const enemyHealthSheet = { ready: false, frames: [], canvas: null };
-export const attackBtnSheet = { ready: false, dataUrl: null };
-let actionCircleCanvas = null;
 let playerManaHud = { current: 100, max: 100 };
 
 // --- 2. FLOOD-FILL BACKGROUND REMOVAL & AUTOTRIM ---
@@ -160,144 +158,13 @@ tryLoadImage(["./assets/ui/controls-and-hud.png"], (img) => {
   }
 
   uiSheet.frames = {
-    down: getTrimmed(0, 0),
-    right: getTrimmed(1, 0),
-    up: getTrimmed(2, 0),
-    left: getTrimmed(0, 1),
-    circle: getTrimmed(1, 1),
-    goldBox: getTrimmed(2, 1),
     coin: getTrimmed(1, 2)
   };
   uiSheet.ready = true;
   updateUIElements();
 });
 
-// --- 6. LOAD & COMPOSITE ATTACK BUTTON (Sword inside Circle) ---
-tryLoadImage(["./assets/ui/attack-button.png"], (img) => {
-  const { canvas, width: W, height: H, data } = processOffscreenCanvas(img);
-
-  const splitX = Math.floor(W * 0.58);
-  const swordBounds = findTightBounds(data, W, 0, 0, splitX - 1, H - 1);
-  const circleBounds = findTightBounds(data, W, splitX, 0, W - 1, H - 1);
-
-  const btnCanvas = document.createElement("canvas");
-  btnCanvas.width = 72; btnCanvas.height = 72;
-  const bctx = btnCanvas.getContext("2d");
-  bctx.imageSmoothingEnabled = false;
-
-  actionCircleCanvas = document.createElement("canvas");
-  actionCircleCanvas.width = 72;
-  actionCircleCanvas.height = 72;
-  const circleCtx = actionCircleCanvas.getContext("2d");
-  circleCtx.imageSmoothingEnabled = false;
-  if (circleBounds) {
-    circleCtx.drawImage(canvas, circleBounds.sx, circleBounds.sy, circleBounds.sw, circleBounds.sh, 2, 2, 68, 68);
-  } else {
-    drawProceduralCircle(circleCtx, 72);
-  }
-  bctx.drawImage(actionCircleCanvas, 0, 0);
-
-  // 2. Tint sword to dark brown (#3a1406) and center it
-  if (swordBounds) {
-    const sc = document.createElement("canvas");
-    sc.width = swordBounds.sw; sc.height = swordBounds.sh;
-    const sctx = sc.getContext("2d");
-    sctx.drawImage(canvas, swordBounds.sx, swordBounds.sy, swordBounds.sw, swordBounds.sh, 0, 0, sc.width, sc.height);
-
-    const sData = sctx.getImageData(0, 0, sc.width, sc.height);
-    for (let i = 0; i < sData.data.length; i += 4) {
-      if (sData.data[i + 3] > 30) {
-        sData.data[i] = 0x3a;     // Red
-        sData.data[i + 1] = 0x14; // Green
-        sData.data[i + 2] = 0x06; // Blue
-      }
-    }
-    sctx.putImageData(sData, 0, 0);
-
-    const swordSize = 52;
-    const swordScale = Math.min(swordSize / sc.width, swordSize / sc.height);
-    const swordW = Math.round(sc.width * swordScale);
-    const swordH = Math.round(sc.height * swordScale);
-    bctx.drawImage(sc, Math.round((72 - swordW) / 2), Math.round((72 - swordH) / 2) - 1, swordW, swordH);
-  } else {
-    drawProceduralSword(bctx, 72);
-  }
-
-  attackBtnSheet.dataUrl = btnCanvas.toDataURL();
-  attackBtnSheet.ready = true;
-  updateAttackButton();
-  updateFireballButton();
-});
-
-function drawProceduralCircle(ctx, size) {
-  const r = size / 2;
-  ctx.fillStyle = "#843e26";
-  ctx.beginPath(); ctx.arc(r, r + 3, r - 4, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#c37b58";
-  ctx.beginPath(); ctx.arc(r, r - 1, r - 4, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = "#431c0e";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-}
-
-function drawProceduralSword(ctx, size) {
-  ctx.save();
-  ctx.translate(size / 2, size / 2 - 1);
-  ctx.strokeStyle = "#3a1406";
-  ctx.fillStyle = "#3a1406";
-  ctx.lineWidth = 4;
-  ctx.lineCap = "round";
-
-  // Slash arc
-  ctx.beginPath(); ctx.arc(0, 0, 18, -Math.PI * 0.7, Math.PI * 0.35); ctx.stroke();
-  // Blade
-  ctx.beginPath(); ctx.moveTo(-11, -11); ctx.lineTo(11, 11); ctx.stroke();
-  // Guard
-  ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(-14, -8); ctx.lineTo(-8, -14); ctx.stroke();
-  ctx.restore();
-}
-
-// Fallback arrow generator
-function generateProceduralArrow(dir) {
-  const c = document.createElement("canvas");
-  c.width = 36; c.height = 36;
-  const ctx = c.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
-
-  ctx.save();
-  ctx.translate(18, 18);
-  if (dir === "right") ctx.rotate(Math.PI / 2);
-  if (dir === "up")    ctx.rotate(Math.PI);
-  if (dir === "left")  ctx.rotate(-Math.PI / 2);
-
-  ctx.fillStyle = "#843e26";
-  ctx.beginPath();
-  ctx.moveTo(-6, -12); ctx.lineTo(6, -12); ctx.lineTo(6, 1);
-  ctx.lineTo(14, 1); ctx.lineTo(0, 15); ctx.lineTo(-14, 1); ctx.lineTo(-6, 1);
-  ctx.closePath(); ctx.fill();
-
-  ctx.fillStyle = "#c37b58";
-  ctx.beginPath();
-  ctx.moveTo(-6, -12); ctx.lineTo(6, -12); ctx.lineTo(6, 0);
-  ctx.lineTo(14, 0); ctx.lineTo(0, 13); ctx.lineTo(-14, 0); ctx.lineTo(-6, 0);
-  ctx.closePath(); ctx.fill();
-
-  ctx.strokeStyle = "#431c0e";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-
-  return c.toDataURL();
-}
-
 export function updateUIElements() {
-  document.querySelectorAll("[data-dir]").forEach(btn => {
-    const dir = btn.dataset.dir;
-    const url = (uiSheet.ready && uiSheet.frames[dir]) ? uiSheet.frames[dir] : generateProceduralArrow(dir);
-    btn.style.backgroundImage = `url("${url}")`;
-  });
-
   const coinIcon = document.getElementById("coin-icon-img");
   if (coinIcon) {
     if (uiSheet.ready && uiSheet.frames.coin) {
@@ -307,43 +174,6 @@ export function updateUIElements() {
     }
   }
 
-  updateAttackButton();
-  updateFireballButton();
-}
-
-export function updateAttackButton() {
-  const attackBtn = document.getElementById("attack");
-  if (!attackBtn) return;
-
-  if (attackBtnSheet.ready && attackBtnSheet.dataUrl) {
-    attackBtn.style.backgroundImage = `url("${attackBtnSheet.dataUrl}")`;
-  } else {
-    const c = document.createElement("canvas");
-    c.width = 72; c.height = 72;
-    const ctx = c.getContext("2d");
-    drawProceduralCircle(ctx, 72);
-    drawProceduralSword(ctx, 72);
-    attackBtn.style.backgroundImage = `url("${c.toDataURL()}")`;
-  }
-}
-
-export function updateFireballButton() {
-  const fireballBtn = document.getElementById("fireball");
-  if (!fireballBtn) return;
-
-  const circleUrl = actionCircleCanvas
-    ? actionCircleCanvas.toDataURL()
-    : (() => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 72;
-        canvas.height = 72;
-        drawProceduralCircle(canvas.getContext("2d"), 72);
-        return canvas.toDataURL();
-      })();
-  fireballBtn.style.backgroundImage = `url("./assets/effects/fireball.gif"), url("${circleUrl}")`;
-  fireballBtn.style.backgroundSize = "68% auto, 100% 100%";
-  fireballBtn.style.backgroundPosition = "center";
-  fireballBtn.style.backgroundRepeat = "no-repeat";
 }
 
 function generateProceduralCoin() {

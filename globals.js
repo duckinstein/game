@@ -20,25 +20,46 @@ export const DIR_MAP = {
 };
 
 export function tryLoadImage(paths, onLoaded) {
-  let idx = 0;
-  const img = new Image();
-  img.onload = () => onLoaded(img);
-  img.onerror = () => {
-    idx++;
-    if (idx < paths.length) img.src = paths[idx];
+  let index = 0;
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    try {
+      onLoaded(image);
+    } catch (error) {
+      console.error("Unable to process loaded image.", error);
+    }
   };
-  img.src = paths[0];
+  image.onerror = () => {
+    index++;
+    if (index < paths.length) {
+      image.src = paths[index];
+    } else {
+      console.error(`Unable to load image: ${paths.join(", ")}`);
+    }
+  };
+  image.src = paths[index];
+  return image;
 }
 
 export function loadSheet(src, cols = COLS, rows = ROWS) {
   const image = new Image();
   const sheet = { image, ready: false, error: false, fw: 0, fh: 0 };
+  image.decoding = "async";
   image.onload = () => {
+    if (!image.naturalWidth || !image.naturalHeight) {
+      sheet.error = true;
+      console.error(`Spritesheet has invalid dimensions: ${src}`);
+      return;
+    }
     sheet.fw = image.naturalWidth / cols;
     sheet.fh = image.naturalHeight / rows;
     sheet.ready = true;
   };
-  image.onerror = () => { sheet.error = true; };
+  image.onerror = () => {
+    sheet.error = true;
+    console.error(`Unable to load spritesheet: ${src}`);
+  };
   image.src = src;
   return sheet;
 }

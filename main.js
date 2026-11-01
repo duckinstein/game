@@ -1,10 +1,14 @@
 import { globals } from './globals.js';
 import { grassSheet, hillsSheet, waterSheet, resolveHillTile, getGrassVariation, getGrassDecor, getPondAt, getWaterDecor, isWaterTile, getTileElevation } from './world.js';
 import { objectsSheet, pondDecorSprites, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
-import { player, walk, attack, FOOT_OFFSET_Y, pushDir, removeDir, beginAttack, updatePlayer, getPlayerFootWorldPos, clearInputs } from './player.js';
+import { player, FOOT_OFFSET_Y, pushDir, removeDir, beginAttack, activatePlayerShield, updatePlayer, getPlayerFootWorldPos, clearInputs, losePlayerXP, setPlayerDeathHandler } from './player.js';
 import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit, loadVillains } from './enemies.js';
-import { launchFireball, canFireballReach, updateFireballs, drawFireballVisuals } from './fireballs.js';
+import { fireballs, launchFireball, canFireballReach, updateFireballs, drawFireballVisuals, clearFireballs } from './fireballs.js';
+import { drawSheep, getSheepInBounds, updateSheep } from './sheep.js';
 import { updateUIElements, updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
+import { initializePanels, initializeCharacterRoster } from './panels.js';
+import { removeDarkBackground } from './image-processing.js';
+import { getTimeOfDayColor } from './time-of-day.js';
 
 const canvas = document.getElementById("game");
 const outputCtx = canvas.getContext("2d");
@@ -12,7 +16,32 @@ const sceneCanvas = document.createElement("canvas");
 const ctx = sceneCanvas.getContext("2d");
 const attackButton = document.getElementById("attack");
 const fireballButton = document.getElementById("fireball");
+const shieldButton = document.getElementById("shield");
 const coinCounterEl = document.getElementById("coin-count");
+const gameOverDialog = document.getElementById("game-over-panel");
+document.addEventListener("contextmenu", event => event.preventDefault());
+document.addEventListener("dragstart", event => event.preventDefault());
+let shieldImage = null;
+const shieldSource = new Image();
+shieldSource.decoding = "async";
+shieldSource.onload = () => {
+  try {
+    const processedShield = document.createElement("canvas");
+    processedShield.width = shieldSource.naturalWidth;
+    processedShield.height = shieldSource.naturalHeight;
+    const shieldContext = processedShield.getContext("2d", { willReadFrequently: true });
+    if (!shieldContext) throw new Error("Unable to create the shield processing context.");
+    shieldContext.drawImage(shieldSource, 0, 0);
+    const imageData = shieldContext.getImageData(0, 0, processedShield.width, processedShield.height);
+    removeDarkBackground(imageData, processedShield.width, processedShield.height);
+    shieldContext.putImageData(imageData, 0, 0);
+    shieldImage = processedShield;
+  } catch (error) {
+    console.error("Unable to process player shield image.", error);
+  }
+};
+shieldSource.onerror = () => console.error("Unable to load player shield image: ./assets/effects/shield.png");
+shieldSource.src = "./assets/effects/shield.png";
 
 if (!outputCtx || !ctx) throw new Error("Unable to initialize the game canvas.");
 
@@ -21,9 +50,72 @@ const SPRITE_H_UNITS = 1.6;
 const pointers = new Map();
 let lastTime = performance.now();
 let villainsLoaded = false;
+let enemiesInitialized = false;
+let gameOver = false;
+let dayCycleTime = 0;
+
+function handlePlayerDeath() {
+  if (gameOver) return;
+  gameOver = true;
+  losePlayerXP(20);
+  clearInputs();
+  pointers.clear();
+  document.querySelectorAll("[data-dir]").forEach(button => button.classList.remove("active"));
+  document.querySelectorAll(".action-buttons .active").forEach(button => button.classList.remove("active"));
+  gameOverDialog.showModal();
+}
+
+function restartAfterGameOver() {
+  gameOverDialog.close();
+  gameOver = false;
+  clearInputs();
+  pointers.clear();
+  clearFireballs();
+  particles.length = 0;
+
+  player.hp = player.maxHp;
+  player.mana = player.maxMana;
+  player.tileX = 0;
+  player.tileY = 0;
+  player.targetX = 0;
+  player.targetY = 0;
+  player.currentX = 0;
+  player.currentY = 0;
+  player.moveProgress = 0;
+  player.isMoving = false;
+  player.walkFrame = 0;
+  player.attacking = false;
+  player.attackFrame = 0;
+  player.hasDealtDamage = false;
+  player.invulnerableTimer = 0;
+  player.shieldTimer = 0;
+  player.initialized = true;
+  document.querySelectorAll("[data-dir].active, .action-buttons .active")
+    .forEach(button => button.classList.remove("active"));
+  updatePlayerHUDHealth(player.hp, player.maxHp);
+  updatePlayerHUDMana(player.mana, player.maxMana);
+
+  if (villainsLoaded) {
+    initEnemies(player);
+    enemiesInitialized = true;
+  }
+  const foot = getPlayerFootWorldPos();
+  globals.cameraX = foot.x - globals.viewW / 2;
+  globals.cameraY = foot.y - globals.viewH / 2;
+}
+
+setPlayerDeathHandler(handlePlayerDeath);
+document.getElementById("play-again").addEventListener("click", restartAfterGameOver);
+gameOverDialog.addEventListener("cancel", event => event.preventDefault());
 
 function updateHUD() {
   if (coinCounterEl) coinCounterEl.textContent = propState?.coinsCollectedCount ?? 0;
+  if (shieldButton) {
+    shieldButton.classList.toggle("active", player.shieldTimer > 0);
+    shieldButton.title = player.shieldTimer > 0
+      ? `Shield active (${player.shieldTimer.toFixed(1)}s remaining)`
+      : "Shield (costs 1 mana, blocks attacks for 5 seconds)";
+  }
   updatePlayerHUDHealth(player.hp, player.maxHp);
 }
 
@@ -59,7 +151,7 @@ function resize() {
 
   globals.tile = Math.max(32, Math.min(56, Math.floor(Math.min(globals.viewW, globals.viewH) / 10 * 0.75)));
 
-  if (!player.initialized && villainsLoaded) {
+  if (!player.initialized) {
     player.tileX = 0; player.tileY = 0;
     player.targetX = 0; player.targetY = 0;
     player.currentX = 0; player.currentY = 0;
@@ -68,7 +160,10 @@ function resize() {
     const foot = getPlayerFootWorldPos();
     globals.cameraX = foot.x - globals.viewW / 2;
     globals.cameraY = foot.y - globals.viewH / 2;
+  }
+  if (villainsLoaded && !enemiesInitialized) {
     initEnemies(player);
+    enemiesInitialized = true;
   }
   updateCamera();
   updateUIElements();
@@ -99,6 +194,13 @@ function update(dt) {
   }
 
   updateCamera();
+  updateSheep(
+    dt,
+    Math.floor(globals.cameraX / globals.tile) - 4,
+    Math.ceil((globals.cameraX + globals.viewW) / globals.tile) + 4,
+    Math.floor(globals.cameraY / globals.tile) - 4,
+    Math.ceil((globals.cameraY + globals.viewH) / globals.tile) + 4
+  );
 }
 
 function getBreeze(tx, ty, now) {
@@ -288,6 +390,23 @@ function drawPlayerSprite(sheet, frameX, frameY, footScreenX, footScreenY) {
   }
 }
 
+function drawPlayerShield(footScreenX, footScreenY) {
+  if (!shieldImage || player.shieldTimer <= 0) return;
+  const size = globals.tile * 4.2;
+  const pulse = 0.88 + Math.sin(performance.now() * 0.006) * 0.08;
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(
+    shieldImage,
+    Math.round(footScreenX - size / 2),
+    Math.round(footScreenY - size * 0.482 - globals.tile * 0.8),
+    size,
+    size
+  );
+  ctx.restore();
+}
+
 function drawMapObject(obj, now) {
   if (!objectsSheet.ready || !objectsSheet.image) return;
   const def = obj.def;
@@ -345,6 +464,7 @@ function draw(now) {
 
   // --- Y-SORTED DEPTH RENDER QUEUE ---
   const renderQueue = [];
+  const visibleSheep = getSheepInBounds(minCol - 2, maxCol + 2, minRow - 2, maxRow + 2);
 
   // 1. Add Player
   const playerFoot = getPlayerFootWorldPos();
@@ -355,11 +475,14 @@ function draw(now) {
       const screenX = playerFoot.x - globals.cameraX;
       const screenY = playerFoot.y - globals.cameraY;
 
-      if (player.attacking && attack.ready) {
-        drawPlayerSprite(attack, player.attackFrame, player.dir, screenX, screenY);
+      const characterAttack = player.characterAttackSheet;
+      const characterWalk = player.characterWalkSheet;
+      if (player.attacking && characterAttack?.ready) {
+        drawPlayerSprite(characterAttack, player.attackFrame, player.dir, screenX, screenY);
       } else {
-        drawPlayerSprite(walk, player.isMoving ? player.walkFrame : 0, player.dir, screenX, screenY);
+        drawPlayerSprite(characterWalk, player.isMoving ? player.walkFrame : 0, player.dir, screenX, screenY);
       }
+      drawPlayerShield(screenX, screenY);
     }
   });
 
@@ -367,7 +490,7 @@ function draw(now) {
   for (let r = minRow - 2; r <= maxRow + 2; r++) {
     for (let c = minCol - 2; c <= maxCol + 2; c++) {
       const obj = getMapObjectAt(c, r);
-      if (obj) {
+      if (obj && obj.name !== "SHEEP") {
         renderQueue.push({
           type: "OBJECT",
           footY: obj.footY,
@@ -375,6 +498,14 @@ function draw(now) {
         });
       }
     }
+  }
+
+  for (const sheep of visibleSheep) {
+    renderQueue.push({
+      type: "SHEEP",
+      footY: sheep.y + 1,
+      draw: () => drawSheep(ctx, sheep, now)
+    });
   }
 
   // 3. Add Enemies
@@ -411,17 +542,27 @@ function draw(now) {
     ctx.restore();
   }
 
+  const dayColor = getTimeOfDayColor(dayCycleTime);
   outputCtx.clearRect(0, 0, globals.viewW, globals.viewH);
   outputCtx.imageSmoothingEnabled = false;
   outputCtx.drawImage(sceneCanvas, 0, 0, globals.viewW, globals.viewH);
+  outputCtx.save();
+  outputCtx.globalCompositeOperation = "multiply";
+  outputCtx.globalAlpha = dayColor.alpha;
+  outputCtx.fillStyle = `rgb(${dayColor.color.join(",")})`;
+  outputCtx.fillRect(0, 0, globals.viewW, globals.viewH);
+  outputCtx.restore();
 }
 
 function loop(now) {
+  requestAnimationFrame(loop);
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
-  update(dt);
+  if (!document.querySelector("dialog[open]")) {
+    update(dt);
+    dayCycleTime += dt * 1000;
+  }
   draw(now);
-  requestAnimationFrame(loop);
 }
 
 function keyDirection(code) {
@@ -433,6 +574,7 @@ function keyDirection(code) {
 }
 
 window.addEventListener("keydown", e => {
+  if (document.querySelector("dialog[open]")) return;
   const dir = keyDirection(e.code);
   if (dir) { pushDir(dir); e.preventDefault(); }
   if ((e.code === "Space" || e.code === "Enter") && !e.repeat) {
@@ -442,6 +584,14 @@ window.addEventListener("keydown", e => {
   if (e.code === "KeyF" && !e.repeat) {
     e.preventDefault();
     if (launchFireball(player) && fireballButton) fireballButton.classList.add("active");
+  }
+  if (e.code === "KeyQ" && !e.repeat) {
+    e.preventDefault();
+    if (activatePlayerShield() && shieldButton) shieldButton.classList.add("active");
+  }
+  if (e.code === "Escape") {
+    e.preventDefault();
+    document.getElementById("pause-panel").showModal();
   }
 });
 
@@ -497,15 +647,33 @@ if (fireballButton) {
   fireballButton.addEventListener("pointercancel", () => fireballButton.classList.remove("active"));
 }
 
-async function startGame() {
-  try {
-    await loadVillains();
+if (shieldButton) {
+  const activateShield = () => {
+    if (activatePlayerShield()) shieldButton.classList.add("active");
+  };
+  shieldButton.addEventListener("pointerdown", event => {
+    event.preventDefault();
+    activateShield();
+  });
+  shieldButton.addEventListener("click", activateShield);
+}
+
+initializePanels();
+
+function startGame() {
+  resize();
+  requestAnimationFrame(loop);
+
+  loadVillains().then(() => {
     villainsLoaded = true;
-    resize();
-    requestAnimationFrame(loop);
-  } catch (error) {
-    console.error("Unable to start the game because villain assets failed to load.", error);
-  }
+    initializeCharacterRoster();
+    if (!enemiesInitialized) {
+      initEnemies(player);
+      enemiesInitialized = true;
+    }
+  }).catch(error => {
+    console.error("Unable to load the full character roster.", error);
+  });
 }
 
 startGame();

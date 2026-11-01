@@ -4,21 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#2b5e28">
-<title>Lorna Hermit - RPG</title>
+<title>OK - RPG</title>
 <style>
   :root {
     --ink: #f4ffe9;
   }
-  * { box-sizing: border-box; }
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+  }
   html, body {
     width: 100%; height: 100%; margin: 0; overflow: hidden;
     background: #8fc257; color: var(--ink);
     font-family: system-ui, -apple-system, Segoe UI, sans-serif;
     overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
   #game {
     position: fixed; inset: 0; width: 100%; height: 100%;
-    display: block; touch-action: none;
+    z-index: 0; display: block; touch-action: none; pointer-events: none;
+    background: #8fc257;
   }
   .hud {
     position: fixed; inset: 0; pointer-events: none; z-index: 2;
@@ -43,24 +51,40 @@
 
   .golden-coin-box {
     position: relative;
-    background: #fffef0;
-    border: 3px solid #e89f30;
-    outline: 2px solid #431c0e;
-    border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0,0,0,.5), inset 0 2px 0 #fee478;
-    height: 38px;
+    background:
+      radial-gradient(ellipse at 30% 22%, rgba(255, 225, 165, .42), transparent 42%),
+      repeating-linear-gradient(8deg, transparent 0 9px, rgba(64, 30, 12, .12) 10px 11px, rgba(255, 218, 154, .1) 12px 13px),
+      linear-gradient(145deg, #d99a52 0%, #ae682f 48%, #75401e 100%);
+    border: 3px solid #4a260f;
+    border-radius: 14px;
+    box-shadow:
+      inset 0 2px 3px rgba(255, 233, 185, .8),
+      inset 0 -4px 5px rgba(54, 25, 10, .45),
+      0 5px 0 #3b1e10,
+      0 8px 12px rgba(0, 0, 0, .48);
+    height: 42px;
     min-width: 105px;
     display: flex;
     align-items: center;
-    padding-left: 14px;
-    padding-right: 34px;
+    padding: 0 38px 0 14px;
+  }
+  .golden-coin-box::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border: 2px solid rgba(255, 218, 157, .38);
+    border-radius: 9px;
+    box-shadow: inset 0 1px 2px rgba(62, 29, 11, .38);
+    pointer-events: none;
   }
 
   .coin-text {
+    position: relative;
+    z-index: 1;
     font-size: 18px;
     font-weight: 900;
-    color: #431c0e;
-    text-shadow: 0 1px 0 rgba(255,255,255,.8);
+    color: #fff0bd;
+    text-shadow: 0 2px 2px rgba(54, 25, 10, .8);
     font-family: monospace, system-ui;
   }
 
@@ -72,6 +96,7 @@
     width: 50px;
     height: 50px;
     image-rendering: pixelated;
+    z-index: 2;
   }
 
   .top-left-hud {
@@ -101,6 +126,23 @@
   .player-mana-wrap {
     margin-top: 2px;
   }
+  .utility-buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 6px 0 0 4px;
+    pointer-events: auto;
+  }
+  .action-btn.utility-btn {
+    width: clamp(50px, 13.65vw, 67px);
+    height: clamp(50px, 13.65vw, 67px);
+    margin: 0;
+  }
+  .action-btn.utility-btn svg {
+    width: 62%;
+    height: 62%;
+  }
 
   /* --- CONTROLS --- */
   .controls {
@@ -118,18 +160,49 @@
     pointer-events: auto;
   }
   .dpad-btn {
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 3px solid #4a260f;
+    border-radius: 50%;
+    background:
+      radial-gradient(ellipse at 30% 22%, rgba(255, 225, 165, .42), transparent 42%),
+      repeating-linear-gradient(8deg, transparent 0 9px, rgba(64, 30, 12, .12) 10px 11px, rgba(255, 218, 154, .1) 12px 13px),
+      linear-gradient(145deg, #d99a52 0%, #ae682f 48%, #75401e 100%);
+    box-shadow:
+      inset 0 2px 3px rgba(255, 233, 185, .8),
+      inset 0 -4px 5px rgba(54, 25, 10, .45),
+      0 5px 0 #3b1e10,
+      0 8px 12px rgba(0, 0, 0, .48);
+    transition: transform .08s ease, box-shadow .08s ease, filter .08s ease;
     -webkit-tap-highlight-color: transparent;
     user-select: none; touch-action: none; cursor: pointer;
-    background: transparent no-repeat center / contain;
-    border: none;
-    outline: none;
-    filter: drop-shadow(0 4px 6px rgba(0,0,0,.55));
-    transition: transform .06s ease, filter .06s ease;
-    image-rendering: pixelated;
+  }
+  .dpad-btn::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border: 2px solid rgba(255, 218, 157, .38);
+    border-radius: 50%;
+    box-shadow: inset 0 1px 2px rgba(62, 29, 11, .38);
+    pointer-events: none;
+  }
+  .dpad-btn svg {
+    position: relative;
+    z-index: 1;
+    width: 44%;
+    height: 44%;
+    filter: drop-shadow(0 2px 1px rgba(55, 25, 9, .55));
+    pointer-events: none;
   }
   .dpad-btn:active, .dpad-btn.active {
-    transform: translateY(3px);
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)) brightness(0.9);
+    transform: translateY(4px);
+    filter: brightness(.9);
+    box-shadow:
+      inset 0 2px 4px rgba(54, 25, 10, .45),
+      0 1px 0 #3b1e10,
+      0 3px 5px rgba(0, 0, 0, .45);
   }
   .up { grid-column: 2; grid-row: 1; }
   .left { grid-column: 1; grid-row: 2; }
@@ -146,17 +219,459 @@
     width: clamp(56px, 16vw, 78px);
     height: clamp(56px, 16vw, 78px);
     margin: 0 4px 6px 0;
-    background: transparent no-repeat center / contain;
-    border: none;
-    outline: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 3px solid #4a260f;
+    border-radius: 50%;
+    background:
+      radial-gradient(ellipse at 30% 22%, rgba(255, 225, 165, .42), transparent 42%),
+      repeating-linear-gradient(8deg, transparent 0 9px, rgba(64, 30, 12, .12) 10px 11px, rgba(255, 218, 154, .1) 12px 13px),
+      linear-gradient(145deg, #d99a52 0%, #ae682f 48%, #75401e 100%);
     cursor: pointer;
-    filter: drop-shadow(0 6px 10px rgba(0,0,0,.55));
-    transition: transform .06s ease, filter .06s ease;
-    image-rendering: pixelated;
+    box-shadow:
+      inset 0 2px 3px rgba(255, 233, 185, .8),
+      inset 0 -4px 5px rgba(54, 25, 10, .45),
+      0 5px 0 #3b1e10,
+      0 8px 12px rgba(0, 0, 0, .48);
+    transition: transform .08s ease, box-shadow .08s ease, filter .08s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    user-select: none;
+  }
+  .action-btn::before {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border: 2px solid rgba(255, 218, 157, .38);
+    border-radius: 50%;
+    box-shadow: inset 0 1px 2px rgba(62, 29, 11, .38);
+    pointer-events: none;
+  }
+  .action-btn svg {
+    position: relative;
+    z-index: 1;
+    width: 66%;
+    height: 66%;
+    overflow: visible;
+    filter: drop-shadow(0 2px 1px rgba(55, 25, 9, .55));
+    pointer-events: none;
   }
   .action-btn:active, .action-btn.active {
     transform: translateY(4px);
-    filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)) brightness(0.9);
+    filter: brightness(.9);
+    box-shadow:
+      inset 0 2px 4px rgba(54, 25, 10, .45),
+      0 1px 0 #3b1e10,
+      0 3px 5px rgba(0, 0, 0, .45);
+  }
+  .action-btn:focus-visible {
+    outline: 3px solid #fff0b0;
+    outline-offset: 4px;
+  }
+  .dpad-btn:focus-visible, .utility-btn:focus-visible, .panel-close:focus-visible,
+  .panel-tab:focus-visible, .volume-control input:focus-visible, .time-of-day-select:focus-visible,
+  .shop-item button:focus-visible {
+    outline: 3px solid #fff0b0;
+    outline-offset: 3px;
+  }
+
+  .wood-panel {
+    width: min(520px, calc(100vw - 28px));
+    max-height: calc(100dvh - 24px);
+    padding: 0;
+    overflow: hidden;
+    color: #fff0bd;
+    border: 4px solid #4a260f;
+    border-radius: 20px;
+    background:
+      repeating-linear-gradient(8deg, transparent 0 15px, rgba(64, 30, 12, .1) 16px 17px, rgba(255, 218, 154, .08) 18px 19px),
+      linear-gradient(145deg, #d99a52 0%, #ae682f 48%, #75401e 100%);
+    box-shadow:
+      inset 0 2px 4px rgba(255, 233, 185, .65),
+      inset 0 0 0 3px rgba(255, 224, 169, .28),
+      0 14px 40px rgba(0, 0, 0, .62);
+  }
+  .wood-panel::backdrop {
+    background: rgba(11, 17, 24, .72);
+    backdrop-filter: blur(3px);
+  }
+  .panel-inner {
+    max-height: inherit;
+    padding: 18px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 0 12px;
+    border-bottom: 2px solid rgba(67, 28, 14, .55);
+  }
+  .panel-title {
+    margin: 0;
+    color: #fff0bd;
+    font-size: clamp(22px, 6vw, 30px);
+    text-shadow: 0 2px 2px rgba(54, 25, 10, .8);
+  }
+  .panel-title::after {
+    content: " ✦";
+    color: #ffe59a;
+    font-size: .72em;
+  }
+  .panel-close {
+    width: 38px;
+    height: 38px;
+    border: 2px solid #4a260f;
+    border-radius: 50%;
+    color: #fff0bd;
+    background: linear-gradient(145deg, #c4793a, #75401e);
+    box-shadow: inset 0 1px 2px rgba(255, 233, 185, .45), 0 3px 0 #3b1e10;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .shop-panel {
+    width: min(800px, calc(100vw - 28px));
+  }
+  .shop-panel .panel-inner {
+    overflow-y: auto;
+  }
+  .shop-panel .panel-tabs {
+    display: flex;
+    margin: 10px 0 0;
+  }
+  .shop-panel .panel-tab {
+    padding: 6px 12px;
+    border: 2px solid #4a260f;
+    border-radius: 12px 12px 0 0;
+    color: #4a260f;
+    background: linear-gradient(145deg, #f3ca82, #c88642);
+    box-shadow: inset 0 1px 2px rgba(255, 233, 185, .35);
+    font: inherit;
+    font-weight: 900;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .4);
+  }
+  .pause-panel {
+    width: min(340px, calc(100vw - 32px));
+  }
+  .pause-menu-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 22px 10px 12px;
+  }
+  .pause-menu-actions button, .game-over-actions button {
+    min-height: 48px;
+    border: 3px solid #4a260f;
+    border-radius: 14px;
+    color: #fff0bd;
+    background:
+      radial-gradient(ellipse at 30% 22%, rgba(255, 225, 165, .3), transparent 42%),
+      repeating-linear-gradient(8deg, transparent 0 9px, rgba(64, 30, 12, .1) 10px 11px),
+      linear-gradient(145deg, #d99a52 0%, #ae682f 48%, #75401e 100%);
+    box-shadow: inset 0 2px 3px rgba(255, 233, 185, .45), 0 4px 0 #3b1e10;
+    font: inherit;
+    font-size: 18px;
+    font-weight: 900;
+    text-shadow: 0 2px 2px rgba(54, 25, 10, .8);
+    cursor: pointer;
+  }
+  .game-over-panel {
+    width: min(390px, calc(100vw - 32px));
+    text-align: center;
+  }
+  .game-over-panel .panel-title {
+    width: 100%;
+  }
+  .game-over-panel p {
+    color: #fff3d4;
+  }
+  .game-over-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .settings-panel {
+    width: min(720px, calc(100vw - 28px));
+  }
+  .shop-item button, .upgrade-card button, .character-select {
+    border: 2px solid #4a260f;
+    border-radius: 12px;
+    color: #fff0bd;
+    background: linear-gradient(145deg, #bd793c, #75401e);
+    box-shadow: inset 0 1px 2px rgba(255, 233, 185, .35), 0 3px 0 #3b1e10;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .wood-panel button:not(:disabled) {
+    transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+  }
+  .wood-panel button:not(:disabled):hover {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+  }
+  .panel-note {
+    margin: 0 0 14px;
+    color: #ffebc5;
+    font-size: 14px;
+    text-shadow: 0 1px 2px rgba(54, 25, 10, .7);
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .stat-card, .volume-control, .upgrade-card {
+    min-width: 0;
+    padding: 12px;
+    border: 2px solid rgba(74, 38, 15, .85);
+    border-radius: 14px;
+    background: rgba(80, 41, 18, .32);
+    box-shadow: inset 0 1px 2px rgba(255, 233, 185, .18);
+  }
+  .stat-card, .upgrade-card {
+    background:
+      radial-gradient(ellipse at 12% 0, rgba(255, 231, 173, .16), transparent 55%),
+      linear-gradient(145deg, rgba(89, 46, 22, .45), rgba(61, 31, 16, .38));
+  }
+  .stat-card dt {
+    margin: 0;
+    color: #fff3d4;
+    font-size: 16px;
+    font-weight: 800;
+  }
+  .stats-grid {
+    margin: 10px 0;
+  }
+  .stat-card dd {
+    margin: 5px 0 0;
+    color: #fff8e6;
+    font-size: 22px;
+    font-weight: 900;
+  }
+  .xp-track {
+    height: 12px;
+    margin-top: 9px;
+    overflow: hidden;
+    border: 2px solid #4a260f;
+    border-radius: 8px;
+    background: rgba(45, 25, 14, .65);
+  }
+  .xp-fill {
+    width: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #a5e454, #f4d45e);
+  }
+  .volume-control {
+    margin: 0;
+  }
+  .volume-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    color: #fff3d4;
+    font-weight: 800;
+  }
+  .volume-control input {
+    width: 100%;
+    accent-color: #f3ca82;
+  }
+  .time-of-day-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #4a260f;
+    border-radius: 12px;
+    color: #fff0bd;
+    background: linear-gradient(145deg, #bd793c, #75401e);
+    font: inherit;
+    font-weight: 800;
+  }
+  .settings-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .settings-layout h3 {
+    margin: 10px 0 6px;
+    font-size: 16px;
+  }
+  .settings-layout .stat-card dd {
+    font-size: 19px;
+  }
+  .settings-xp {
+    margin-top: 10px;
+  }
+  .settings-volume {
+    display: grid;
+    gap: 9px;
+  }
+  .settings-volume .panel-note {
+    margin: 0;
+    font-size: 12px;
+  }
+  .shop-content {
+    display: grid;
+    grid-template-columns: minmax(190px, .85fr) minmax(280px, 1.15fr);
+    gap: 18px;
+    padding-top: 14px;
+  }
+  .character-preview {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    border: 2px solid rgba(74, 38, 15, .85);
+    border-radius: 16px;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(201, 230, 151, .35), transparent 62%),
+      linear-gradient(145deg, rgba(89, 46, 22, .45), rgba(61, 31, 16, .38));
+  }
+  #shop-preview {
+    width: min(100%, 220px);
+    height: 220px;
+    touch-action: pan-y;
+    cursor: grab;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 5px 3px rgba(45, 28, 12, .28));
+  }
+  #shop-preview:active { cursor: grabbing; }
+  .character-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+  }
+  .character-navigation button, .character-select, .upgrade-card button {
+    min-height: 36px;
+    padding: 6px 10px;
+  }
+  .character-navigation button {
+    width: 38px;
+    border: 2px solid #4a260f;
+    border-radius: 50%;
+    color: #fff0bd;
+    background: linear-gradient(145deg, #bd793c, #75401e);
+    box-shadow: inset 0 1px 2px rgba(255, 233, 185, .35), 0 3px 0 #3b1e10;
+    font: inherit;
+    font-weight: 900;
+    cursor: pointer;
+  }
+  .character-navigation button:disabled, .character-select:disabled, .upgrade-card button:disabled {
+    cursor: default;
+    opacity: .72;
+  }
+  #character-position, #preview-animation-label {
+    color: #ffebc5;
+    font-size: 12px;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(54, 25, 10, .7);
+  }
+  #preview-animation-label { min-height: 18px; margin: 4px 0; }
+  .character-details {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .character-details h3 {
+    margin: 0;
+    color: #fff3d4;
+  }
+  #character-kind {
+    margin: 0;
+    color: #ffe4b2;
+  }
+  .character-select {
+    width: 100%;
+    color: #fff0bd;
+    background: linear-gradient(145deg, #bd793c, #75401e);
+    box-shadow: inset 0 1px 2px rgba(255, 233, 185, .35), 0 3px 0 #3b1e10;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  #shop-message {
+    min-height: 18px;
+    margin: 0;
+    color: #ffebc5;
+    font-size: 12px;
+    text-shadow: 0 1px 2px rgba(54, 25, 10, .7);
+  }
+  .upgrade-card {
+    padding: 9px 10px;
+  }
+  .upgrade-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: #fff3d4;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .upgrade-value { white-space: nowrap; }
+  .upgrade-progress {
+    height: 9px;
+    margin: 6px 0;
+    overflow: hidden;
+    border: 2px solid #4a260f;
+    border-radius: 8px;
+    background: rgba(45, 25, 14, .65);
+  }
+  .upgrade-progress-fill {
+    width: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #a5e454, #f4d45e);
+  }
+  .upgrade-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .upgrade-level {
+    color: #ffe4b2;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .upgrade-card button {
+    min-height: 30px;
+    padding: 4px 7px;
+    color: #fff0bd;
+    background: linear-gradient(145deg, #bd793c, #75401e);
+    box-shadow: inset 0 1px 2px rgba(255, 233, 185, .35), 0 2px 0 #3b1e10;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  @media (max-width: 560px) {
+    .panel-inner { padding: 12px; }
+    .shop-content { grid-template-columns: minmax(125px, .8fr) minmax(0, 1.2fr); gap: 9px; }
+    #shop-preview { height: 155px; }
+    .character-preview { padding: 5px; }
+    .upgrade-card { padding: 7px; }
+    .upgrade-heading { flex-direction: column; gap: 2px; }
+    .upgrade-footer { align-items: flex-start; flex-direction: column; }
+    .upgrade-card button { width: 100%; }
+    .settings-layout { gap: 8px; }
+    .settings-layout .stat-card, .settings-layout .volume-control { padding: 8px; }
+    .settings-layout .volume-label { font-size: 12px; }
+  }
+  @media (max-height: 520px) {
+    .panel-inner { padding: 10px; }
+    .shop-content { padding-top: 8px; }
+    #shop-preview { height: 125px; }
+    .shop-panel .panel-header, .settings-panel .panel-header { padding-bottom: 6px; }
+    .settings-layout .stat-card { padding: 6px; }
+    .settings-layout .stats-grid { gap: 5px; margin: 5px 0; }
   }
 </style>
 </head>
@@ -170,8 +685,30 @@
         <canvas id="player-health-canvas" class="resource-canvas" width="280" height="56" role="img" aria-label="Player health"></canvas>
       </div>
       <div class="player-mana-wrap">
-        <canvas id="player-mana-canvas" class="resource-canvas" width="280" height="56" role="img" aria-label="Player mana"></canvas>
+        <canvas id="player-mana-canvas" class="resource-canvas" width="280" height="56" role="img" aria-label="Player mana" title="Each fireball costs 0.5 mana. One mana regenerates every 2 seconds."></canvas>
       </div>
+    </div>
+    <div class="utility-buttons" aria-label="Game menus">
+      <button id="pause-open" class="action-btn utility-btn" type="button" aria-label="Pause game" title="Pause">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M15 10h7v28h-7zm11 0h7v28h-7z" fill="#ffe4ae" stroke="#542d19" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button id="settings-open" class="action-btn utility-btn" type="button" aria-label="Open settings" title="Settings">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path d="m20 5 8 0 1 5a15 15 0 0 1 3 2l5-1 4 7-4 3a15 15 0 0 1 0 4l4 3-4 7-5-1a15 15 0 0 1-3 2l-1 5h-8l-1-5a15 15 0 0 1-3-2l-5 1-4-7 4-3a15 15 0 0 1 0-4l-4-3 4-7 5 1a15 15 0 0 1 3-2Z" fill="#e1ae61" stroke="#542d19" stroke-width="2.5" stroke-linejoin="round"/>
+          <circle cx="24" cy="23" r="7" fill="#75401e" stroke="#542d19" stroke-width="2.5"/>
+          <circle cx="24" cy="23" r="3" fill="#f8d68e"/>
+        </svg>
+      </button>
+      <button id="shop-open" class="action-btn utility-btn" type="button" aria-label="Open shop" title="Shop">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M9 18h30l-3 23H12Z" fill="#d89a50" stroke="#542d19" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M17 19v-5a7 7 0 0 1 14 0v5" fill="none" stroke="#f8d68e" stroke-width="4" stroke-linecap="round"/>
+          <path d="M9 24h30" stroke="#f8d68e" stroke-width="2" opacity=".8"/>
+          <path d="M18 29v7m12-7v7" stroke="#542d19" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -185,17 +722,160 @@
 
   <div class="controls">
     <div class="dpad" aria-label="Movement controls">
-      <button class="dpad-btn up" data-dir="up" aria-label="Move up"></button>
-      <button class="dpad-btn left" data-dir="left" aria-label="Move left"></button>
-      <button class="dpad-btn right" data-dir="right" aria-label="Move right"></button>
-      <button class="dpad-btn down" data-dir="down" aria-label="Move down"></button>
+      <button class="dpad-btn up" data-dir="up" aria-label="Move up"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 10h-5v8H8v-8H3Z" fill="#ffe4ae" stroke="#542d19" stroke-width="2" stroke-linejoin="round"/></svg></button>
+      <button class="dpad-btn left" data-dir="left" aria-label="Move left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 12 10-9v5h8v8h-8v5Z" fill="#ffe4ae" stroke="#542d19" stroke-width="2" stroke-linejoin="round"/></svg></button>
+      <button class="dpad-btn right" data-dir="right" aria-label="Move right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 12-10 9v-5H3V8h8V3Z" fill="#ffe4ae" stroke="#542d19" stroke-width="2" stroke-linejoin="round"/></svg></button>
+      <button class="dpad-btn down" data-dir="down" aria-label="Move down"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 21-9-10h5V3h8v8h5Z" fill="#ffe4ae" stroke="#542d19" stroke-width="2" stroke-linejoin="round"/></svg></button>
     </div>
     <div class="action-buttons" aria-label="Combat controls">
-      <button id="attack" class="action-btn" aria-label="Attack with sword" title="Sword attack"></button>
-      <button id="fireball" class="action-btn" aria-label="Cast fireball" title="Cast fireball"></button>
+      <button id="attack" class="action-btn" aria-label="Attack with sword" title="Sword attack">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M34 5 41 12 20 33 14 35 16 29Z" fill="#eaf3f2" stroke="#542d19" stroke-width="2" stroke-linejoin="round"/>
+          <path d="m34 7 4 4-20 20-3 1 1-3Z" fill="#fffdf0"/>
+          <path d="m13 29 6 6-3 5-8-8Z" fill="#dfad52" stroke="#542d19" stroke-width="2" stroke-linejoin="round"/>
+          <path d="m10 33-4 4m9-14 8 8" fill="none" stroke="#542d19" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button id="fireball" class="action-btn" aria-label="Cast fireball" title="Cast fireball (2 shots per mana)">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <defs>
+            <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fff47a"/>
+              <stop offset=".48" stop-color="#ff9b32"/>
+              <stop offset="1" stop-color="#e83c24"/>
+            </linearGradient>
+          </defs>
+          <path d="M25 4c2 9-5 10-3 17 2-3 5-5 7-9 8 7 12 14 9 22-2 7-8 11-16 10C12 43 7 36 9 27c1-5 5-10 10-14-1 6 0 8 2 10 5-6 2-12 4-19Z" fill="url(#flame)" stroke="#542d19" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M24 25c1 4-3 6-2 9 1-2 3-2 4-5 4 4 5 7 3 10-1 2-3 3-6 3-4 0-6-3-5-6 0-2 2-4 4-5 0 2 0 3 1 4 2-3 0-6 1-10Z" fill="#fff5a0"/>
+          <path d="m8 13 3 2m25-5-2 3M5 23l3 1" fill="none" stroke="#fff1a3" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button id="shield" class="action-btn" aria-label="Activate shield" title="Shield (costs 1 mana, blocks attacks for 5 seconds)">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 4 41 10v12c0 11-7 18-17 23C14 40 7 33 7 22V10Z" fill="#6bd7e8" stroke="#542d19" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M24 9 36 13v9c0 8-4 14-12 18Z" fill="#b9f4f3"/>
+          <path d="M13 15v7c0 7 3 12 8 16" fill="none" stroke="#e9ffff" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="m18 23 4 4 8-9" fill="none" stroke="#fff4ba" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
   </div>
 </div>
+
+<dialog id="shop-panel" class="wood-panel shop-panel" aria-labelledby="shop-title">
+  <div class="panel-inner">
+    <header class="panel-header">
+      <h2 id="shop-title" class="panel-title">Woodland Shop</h2>
+      <button class="panel-close" type="button" aria-label="Close shop">&times;</button>
+    </header>
+    <div class="panel-tabs" role="tablist" aria-label="Shop category">
+      <button id="characters-tab" class="panel-tab" type="button" role="tab" aria-selected="true" aria-controls="characters-items">Characters</button>
+    </div>
+    <div id="characters-items" class="shop-content" role="tabpanel" aria-labelledby="characters-tab">
+      <section class="character-preview" aria-label="Character preview; swipe to browse">
+        <canvas id="shop-preview" width="220" height="220" aria-label="Animated character preview"></canvas>
+        <p id="preview-animation-label">Walk animation</p>
+        <div class="character-navigation">
+          <button id="character-previous" type="button" aria-label="Previous character">&lsaquo;</button>
+          <span id="character-position">1 / 6</span>
+          <button id="character-next" type="button" aria-label="Next character">&rsaquo;</button>
+        </div>
+      </section>
+      <section class="character-details" aria-label="Character details and upgrades">
+        <div>
+          <h3 id="character-name">Lorna</h3>
+          <p id="character-kind">Adventurer</p>
+        </div>
+        <button id="character-select" class="character-select" type="button">Selected</button>
+        <p id="shop-message" role="status">Choose a character or improve your stats.</p>
+        <article class="upgrade-card" data-upgrade="fireball">
+          <div class="upgrade-heading"><span>Fireball damage</span><span class="upgrade-value"></span></div>
+          <div class="upgrade-progress" role="progressbar" aria-label="Fireball damage upgrade level" aria-valuemin="0" aria-valuemax="5"><div class="upgrade-progress-fill"></div></div>
+          <div class="upgrade-footer"><span class="upgrade-level"></span><button type="button">Upgrade</button></div>
+        </article>
+        <article class="upgrade-card" data-upgrade="sword">
+          <div class="upgrade-heading"><span>Sword damage</span><span class="upgrade-value"></span></div>
+          <div class="upgrade-progress" role="progressbar" aria-label="Sword damage upgrade level" aria-valuemin="0" aria-valuemax="5"><div class="upgrade-progress-fill"></div></div>
+          <div class="upgrade-footer"><span class="upgrade-level"></span><button type="button">Upgrade</button></div>
+        </article>
+      </section>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="settings-panel" class="wood-panel settings-panel" aria-labelledby="settings-title">
+  <div class="panel-inner">
+    <header class="panel-header">
+      <h2 id="settings-title" class="panel-title">Camp Settings</h2>
+      <button class="panel-close" type="button" aria-label="Close settings">&times;</button>
+    </header>
+    <div class="settings-layout">
+      <section>
+        <h3>Adventurer Stats</h3>
+        <dl class="stats-grid">
+          <div class="stat-card"><dt>Level</dt><dd id="stat-level">1</dd></div>
+          <div class="stat-card"><dt>Villains killed</dt><dd id="stat-villains">0</dd></div>
+          <div class="stat-card"><dt>Characters unlocked</dt><dd id="stat-characters">1</dd></div>
+          <div class="stat-card"><dt>Skills unlocked</dt><dd id="stat-skills">2</dd></div>
+        </dl>
+        <div class="stat-card settings-xp">
+          <div class="volume-label"><span>Experience</span><span id="stat-xp">0 / 100 XP</span></div>
+          <div class="xp-track" role="progressbar" aria-label="Experience progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="stat-xp-fill" class="xp-fill"></div></div>
+        </div>
+      </section>
+      <section>
+        <h3>Volume</h3>
+        <div class="settings-volume">
+          <p class="panel-note">Saved for when game audio is available.</p>
+          <label class="volume-control">
+            <span class="volume-label"><span>Music</span><span id="music-volume-value">70%</span></span>
+            <input id="music-volume" type="range" min="0" max="100" value="70">
+          </label>
+          <label class="volume-control">
+            <span class="volume-label"><span>Sound effects</span><span id="sfx-volume-value">80%</span></span>
+            <input id="sfx-volume" type="range" min="0" max="100" value="80">
+          </label>
+          <label class="volume-control">
+            <span class="volume-label"><span>Time of day</span></span>
+            <select id="time-of-day" class="time-of-day-select">
+              <option value="auto">Auto cycle</option>
+              <option value="day">Day</option>
+              <option value="night">Night</option>
+              <option value="sunset">Sunset</option>
+              <option value="sunrise">Sunrise</option>
+            </select>
+          </label>
+        </div>
+      </section>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="pause-panel" class="wood-panel pause-panel" aria-labelledby="pause-title">
+  <div class="panel-inner">
+    <header class="panel-header">
+      <h2 id="pause-title" class="panel-title">Game Paused</h2>
+      <button class="panel-close" type="button" aria-label="Close pause menu">&times;</button>
+    </header>
+    <div class="pause-menu-actions">
+      <button id="pause-settings" type="button">Settings</button>
+      <button id="pause-shop" type="button">Shop</button>
+      <button id="pause-resume" type="button">Resume</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="game-over-panel" class="wood-panel game-over-panel" aria-labelledby="game-over-title">
+  <div class="panel-inner">
+    <header class="panel-header">
+      <h2 id="game-over-title" class="panel-title">Game Over</h2>
+    </header>
+    <p>You lost up to 20 XP. Your coins and other progress are safe.</p>
+    <div class="game-over-actions">
+      <button id="play-again" type="button">Play Again</button>
+    </div>
+  </div>
+</dialog>
 
 <script type="module" src="./main.js"></script>
 </body>

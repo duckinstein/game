@@ -3,13 +3,16 @@ import { damageMapObjectAt, getMapObjectAtWorld } from './props.js';
 import { spendPlayerMana, takePlayerDamage } from './player.js';
 import { damageEnemy, enemies } from './enemies.js';
 import { getTileElevation, isCliff } from './world.js';
+import { playSound } from './audio.js';
 
 const FIREBALL_SPEED = 8;
-const FIREBALL_DAMAGE = 20;
 const ENEMY_FIREBALL_DAMAGE = 10;
 const FIREBALL_RADIUS = 0.18;
 const FIREBALL_SIZE = 1.9;
-export const FIREBALL_MANA_COST = 0.5;
+const EXPLOSION_FRAME_COUNT = 10;
+const EXPLOSION_FRAME_TIME = 0.045;
+const EXPLOSION_DURATION = EXPLOSION_FRAME_COUNT * EXPLOSION_FRAME_TIME;
+const EXPLOSION_SIZE = 1.7;
 const FIREBALL_DIRECTIONS = {
   [DIR.DOWN]: { x: 0, y: 1 },
   [DIR.LEFT]: { x: -1, y: 0 },
@@ -19,9 +22,30 @@ const FIREBALL_DIRECTIONS = {
 
 const FIREBALL_IMAGE = "./assets/effects/fireball.gif";
 const fireballImage = new Image();
+fireballImage.decoding = "async";
+fireballImage.onerror = () => console.error(`Unable to load fireball image: ${FIREBALL_IMAGE}`);
 fireballImage.src = FIREBALL_IMAGE;
 
+const EXPLOSION_IMAGE = "./assets/effects/Explosion_02.png";
+const explosionImage = new Image();
+explosionImage.decoding = "async";
+explosionImage.onload = () => {
+  if (explosionImage.naturalWidth % EXPLOSION_FRAME_COUNT !== 0) {
+    console.error(`Explosion spritesheet width must be divisible by ${EXPLOSION_FRAME_COUNT}: ${EXPLOSION_IMAGE}`);
+  }
+};
+explosionImage.onerror = () => console.error(`Unable to load explosion image: ${EXPLOSION_IMAGE}`);
+explosionImage.src = EXPLOSION_IMAGE;
+
 export const fireballs = [];
+const explosions = [];
+export const FIREBALLS_PER_MANA = 2;
+export const FIREBALL_MANA_COST = 1 / FIREBALLS_PER_MANA;
+
+export function clearFireballs() {
+  fireballs.length = 0;
+  explosions.length = 0;
+}
 
 function tileAt(x, y) {
   return { x: Math.floor(x), y: Math.floor(y) };
@@ -32,17 +56,22 @@ function elevationAt(x, y) {
   return getTileElevation(tile.x, tile.y);
 }
 
+function addExplosion(tile, elevation) {
+  explosions.push({ x: tile.x, y: tile.y, elevation, elapsed: 0 });
+}
+
 export function launchFireball(actor, owner = "player") {
   const direction = FIREBALL_DIRECTIONS[actor.dir];
   if (!direction) return false;
   if (owner === "player" && !spendPlayerMana(FIREBALL_MANA_COST)) return false;
+  playSound("fireball");
   fireballs.push({
     x: actor.currentX + 0.5 + direction.x * 0.5,
     y: actor.currentY + 0.5 + direction.y * 0.5,
     dirX: direction.x,
     dirY: direction.y,
     owner,
-    fireballColor: owner === "enemy" ? actor.fireballColor : null,
+    damage: owner === "enemy" ? actor.damage : null,
     age: 0,
     elevation: getTileElevation(Math.round(actor.currentX), Math.round(actor.currentY)),
     removed: false
@@ -56,17 +85,17 @@ function hitEnemyAt(x, y, damage, elevation) {
     if (getTileElevation(Math.round(enemy.currentX), Math.round(enemy.currentY)) !== elevation) continue;
     if (Math.hypot(enemy.currentX + 0.5 - x, enemy.currentY + 0.5 - y) <= 0.5 + FIREBALL_RADIUS) {
       damageEnemy(enemy, damage);
-      return true;
+      return tileAt(Math.round(enemy.currentX), Math.round(enemy.currentY));
     }
   }
-  return false;
+  return null;
 }
 
-function hitPlayerAt(x, y, player, elevation) {
-  if (getTileElevation(Math.round(player.currentX), Math.round(player.currentY)) !== elevation) return false;
-  if (Math.hypot(player.currentX + 0.5 - x, player.currentY + 0.5 - y) > 0.5 + FIREBALL_RADIUS) return false;
-  takePlayerDamage(ENEMY_FIREBALL_DAMAGE);
-  return true;
+function hitPlayerAt(x, y, player, elevation, damage = ENEMY_FIREBALL_DAMAGE) {
+  if (getTileElevation(Math.round(player.currentX), Math.round(player.currentY)) !== elevation) return null;
+  if (Math.hypot(player.currentX + 0.5 - x, player.currentY + 0.5 - y) > 0.5 + FIREBALL_RADIUS) return null;
+  takePlayerDamage(damage);
+  return tileAt(Math.round(player.currentX), Math.round(player.currentY));
 }
 
 export function canFireballReach(fromX, fromY, toX, toY) {
@@ -97,6 +126,11 @@ export function canFireballReach(fromX, fromY, toX, toY) {
 }
 
 export function updateFireballs(dt, player) {
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    explosions[i].elapsed += dt;
+    if (explosions[i].elapsed >= EXPLOSION_DURATION) explosions.splice(i, 1);
+  }
+
   const steps = Math.max(1, Math.ceil(FIREBALL_SPEED * dt / 0.12));
   const stepDistance = FIREBALL_SPEED * dt / steps;
 
@@ -126,19 +160,21 @@ export function updateFireballs(dt, player) {
       const tile = tileAt(fireball.x, fireball.y);
       const currentElevation = getTileElevation(tile.x, tile.y);
       if (isCliff(tile.x, tile.y) || currentElevation !== fireball.elevation) {
+        addExplosion(tile, fireball.elevation);
         fireball.removed = true;
         continue;
       }
 
-      const damage = fireball.owner === "player" ? FIREBALL_DAMAGE * 2 : FIREBALL_DAMAGE;
+      const damage = fireball.owner === "player" ? player.fireballDamage : 20;
       const object = getMapObjectAtWorld(fireball.x, fireball.y, FIREBALL_RADIUS);
       const objectHit = Boolean(object &&
-        getTileElevation(object.tx, object.ty) === fireball.elevation &&
-        damageMapObjectAt(fireball.x, fireball.y, FIREBALL_RADIUS));
-      const targetHit = !objectHit && (fireball.owner === "enemy"
-        ? hitPlayerAt(fireball.x, fireball.y, player, fireball.elevation)
+        getTileElevation(object.tx, object.ty) === fireball.elevation);
+      if (objectHit) damageMapObjectAt(fireball.x, fireball.y, FIREBALL_RADIUS);
+      const targetTile = !objectHit && (fireball.owner === "enemy"
+        ? hitPlayerAt(fireball.x, fireball.y, player, fireball.elevation, fireball.damage)
         : hitEnemyAt(fireball.x, fireball.y, damage, fireball.elevation));
-      if (objectHit || targetHit) {
+      if (objectHit || targetTile) {
+        addExplosion(objectHit ? tileAt(fireball.x, fireball.y) : targetTile, fireball.elevation);
         fireball.removed = true;
       }
     }
@@ -159,62 +195,58 @@ export function updateFireballs(dt, player) {
 }
 
 export function drawFireballVisuals(ctx) {
+  if (explosionImage.complete && explosionImage.naturalWidth > 0) {
+    const frameWidth = explosionImage.naturalWidth / EXPLOSION_FRAME_COUNT;
+    const frameHeight = explosionImage.naturalHeight;
+    const size = globals.tile * EXPLOSION_SIZE;
+
+    for (const explosion of explosions) {
+      const frameProgress = explosion.elapsed / EXPLOSION_FRAME_TIME;
+      const frameIndex = Math.min(Math.floor(frameProgress), EXPLOSION_FRAME_COUNT - 1);
+      const blend = frameProgress - frameIndex;
+      const centerX = (explosion.x + 0.5) * globals.tile - globals.cameraX;
+      const centerY = (explosion.y + 0.5 - explosion.elevation * 0.6) * globals.tile - globals.cameraY;
+      const drawFrame = (index, alpha) => {
+        if (alpha <= 0) return;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(
+          explosionImage,
+          index * frameWidth, 0, frameWidth, frameHeight,
+          centerX - size / 2, centerY - size / 2, size, size
+        );
+      };
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      if (frameIndex < EXPLOSION_FRAME_COUNT - 1) {
+        drawFrame(frameIndex, 1 - blend);
+        drawFrame(frameIndex + 1, blend);
+      } else {
+        drawFrame(frameIndex, 1 - blend);
+      }
+      ctx.restore();
+    }
+  }
+
   const width = globals.tile * FIREBALL_SIZE;
   const height = width / 2;
 
   for (const fireball of fireballs) {
-    if (!fireballImage.complete || fireballImage.naturalWidth === 0) continue;
     const x = fireball.x * globals.tile - globals.cameraX;
     const y = (fireball.y - fireball.elevation * 0.6) * globals.tile - globals.cameraY;
-    const phase = fireball.age * 24;
-    const pulse = 0.92 + 0.12 * Math.sin(phase);
-    const flicker = 0.82 + 0.18 * Math.sin(phase * 1.7);
-    const enemyShot = fireball.owner === "enemy";
-    const fireballColor = enemyShot ? fireball.fireballColor : "#ff6818";
-    const [red, green, blue] = [
-      Number.parseInt(fireballColor.slice(1, 3), 16),
-      Number.parseInt(fireballColor.slice(3, 5), 16),
-      Number.parseInt(fireballColor.slice(5, 7), 16)
-    ];
-    const maxColor = Math.max(red, green, blue);
-    const minColor = Math.min(red, green, blue);
-    const blackShot = enemyShot && maxColor < 80;
-    const glowColor = `${red}, ${green}, ${blue}`;
-    let hue = 0;
-    if (maxColor !== minColor) {
-      const delta = maxColor - minColor;
-      if (maxColor === red) hue = ((green - blue) / delta) % 6;
-      else if (maxColor === green) hue = (blue - red) / delta + 2;
-      else hue = (red - green) / delta + 4;
-      hue = (hue * 60 + 360) % 360;
-    }
 
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.atan2(fireball.dirY, fireball.dirX));
-    ctx.globalAlpha = flicker;
-    ctx.globalCompositeOperation = blackShot ? "source-over" : "lighter";
-    const glow = ctx.createRadialGradient(0, 0, width * 0.06, 0, 0, width * 0.72);
-    glow.addColorStop(0, `rgba(${glowColor}, 0.7)`);
-    glow.addColorStop(0.35, `rgba(${glowColor}, 0.34)`);
-    glow.addColorStop(1, `rgba(${glowColor}, 0)`);
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, width * 0.72, height * 1.65, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.globalCompositeOperation = "source-over";
-    ctx.shadowColor = fireballColor;
-    ctx.shadowBlur = globals.tile * (0.8 + 0.35 * (1 + Math.sin(phase)));
-    if (blackShot) ctx.filter = "grayscale(1) brightness(0.15) contrast(1.4)";
-    else if (enemyShot) ctx.filter = `hue-rotate(${hue - 20}deg) saturate(1.8) brightness(1.08)`;
-    ctx.drawImage(
-      fireballImage,
-      -width * pulse / 2,
-      -height * pulse / 2,
-      width * pulse,
-      height * pulse
-    );
+    if (fireballImage.complete && fireballImage.naturalWidth > 0) {
+      ctx.drawImage(
+        fireballImage,
+        -width / 2,
+        -height / 2,
+        width,
+        height
+      );
+    }
     ctx.restore();
   }
 }

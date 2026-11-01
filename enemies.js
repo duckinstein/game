@@ -1,17 +1,18 @@
 import { globals, DIR } from './globals.js';
 import { getTileElevation, isCliff, isWaterTile } from './world.js';
 import { canStep, consumeBerryAt, damageMapObjectAt, getMapObjectAt, particles, setEnemySolidChecker } from './props.js';
-import { takePlayerDamage, addPlayerXP } from './player.js';
+import { player, takePlayerDamage, addPlayerXP } from './player.js';
 import { canFireballReach } from './fireballs.js';
 import { drawEnemyHealthBar } from './ui.js';
 import { removeLightBackground } from './image-processing.js';
+import { playSound } from './audio.js';
 
-function loadVillainSheet(path, cols, rows) {
+function loadCharacterSheet(path, cols, rows) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
       if (image.naturalWidth === 0 || image.naturalHeight === 0) {
-        reject(new Error(`Villain spritesheet has invalid dimensions: ${path}`));
+        reject(new Error(`Character spritesheet has invalid dimensions: ${path}`));
         return;
       }
       const canvas = document.createElement("canvas");
@@ -19,7 +20,7 @@ function loadVillainSheet(path, cols, rows) {
       canvas.height = image.naturalHeight;
       const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context) {
-        reject(new Error(`Unable to process villain spritesheet: ${path}`));
+        reject(new Error(`Unable to process character spritesheet: ${path}`));
         return;
       }
 
@@ -37,72 +38,142 @@ function loadVillainSheet(path, cols, rows) {
         rows
       });
     };
-    image.onerror = () => reject(new Error(`Unable to load villain spritesheet: ${path}`));
+    image.onerror = () => reject(new Error(`Unable to load character spritesheet: ${path}`));
     image.src = path;
   });
 }
 
 let VILLAINS = [];
+let allCharacters = [];
+let villainDefinitions = null;
+let villainManifestPromise = null;
 let villainsLoadPromise = null;
+let enemyRosterReady = false;
+let enemyWorldInitialized = false;
 
-export function loadVillains() {
-  if (villainsLoadPromise) return villainsLoadPromise;
-
-  villainsLoadPromise = (async () => {
-    const response = await fetch(new URL("./assets/characters/villains/villains.json", import.meta.url));
+function loadVillainDefinitions() {
+  if (villainManifestPromise) return villainManifestPromise;
+  villainManifestPromise = (async () => {
+    const response = await fetch(new URL("./assets/sprite/sprite.json", import.meta.url));
     if (!response.ok) {
-      throw new Error(`Unable to load villain roster: ${response.status} ${response.statusText}`);
+      throw new Error(`Unable to load character roster: ${response.status} ${response.statusText}`);
     }
 
     const roster = await response.json();
-    if (!Array.isArray(roster.villains) || roster.villains.length === 0) {
-      throw new Error("Villain roster must contain at least one villain.");
+    if (!Array.isArray(roster.characters) || roster.characters.length < 2) {
+      throw new Error("Character roster must contain at least two characters.");
     }
 
     const fileNames = new Set();
-    const villains = await Promise.all(roster.villains.map(async (entry) => {
+    villainDefinitions = roster.characters.map(entry => {
       if (typeof entry.fileName !== "string" ||
           !/^[a-zA-Z0-9_-]+$/.test(entry.fileName) ||
-          fileNames.has(entry.fileName)) {
-        throw new Error("Villain roster contains an invalid or duplicate fileName.");
-      }
-      if (typeof entry.fireballColor !== "string" || !/^#[\da-fA-F]{6}$/.test(entry.fireballColor)) {
-        throw new Error(`Villain "${entry.fileName}" must have a six-digit hex fireballColor.`);
+          fileNames.has(entry.fileName) ||
+          typeof entry.name !== "string" ||
+          entry.name.trim().length === 0) {
+        throw new Error("Character roster contains an invalid name or duplicate fileName.");
       }
       fileNames.add(entry.fileName);
-
-      const sheetPath = suffix => new URL(
-        `./assets/characters/villains/${entry.fileName}_${suffix}.png`,
-        import.meta.url
-      ).href;
-      const [walk, attack, die] = await Promise.all([
-        loadVillainSheet(sheetPath("walk"), 4, 4),
-        loadVillainSheet(sheetPath("attack"), 4, 4),
-        loadVillainSheet(sheetPath("die"), 4, 1)
-      ]);
-      return { fileName: entry.fileName, fireballColor: entry.fireballColor, walk, attack, die };
-    }));
-
-    VILLAINS = villains;
+      return { fileName: entry.fileName, name: entry.name.trim() };
+    });
   })();
+  villainManifestPromise.catch(() => {
+    villainManifestPromise = null;
+  });
+  return villainManifestPromise;
+}
 
+async function loadCharacter(entry) {
+  const sheetPath = suffix => new URL(
+    `./assets/sprite/${entry.fileName}_${suffix}.png`,
+    import.meta.url
+  ).href;
+  const walk = await loadCharacterSheet(sheetPath("walk"), 4, 4);
+  const attack = await loadCharacterSheet(sheetPath("attack"), 4, 4);
+  const die = entry.fileName === "player"
+    ? walk
+    : await loadCharacterSheet(sheetPath("die"), 4, 1);
+  return { ...entry, walk, attack, die };
+}
+
+export function loadVillains() {
+  if (villainsLoadPromise) return villainsLoadPromise;
+  villainsLoadPromise = (async () => {
+    await loadVillainDefinitions();
+    const loadedCharacters = [];
+    for (const entry of villainDefinitions) {
+      loadedCharacters.push(await loadCharacter(entry));
+    }
+    allCharacters = loadedCharacters;
+    VILLAINS = allCharacters.filter(character => character.fileName !== player.characterId);
+    enemyRosterReady = true;
+    if (enemyWorldInitialized) initEnemies(player);
+  })();
+  villainsLoadPromise.catch(() => {
+    villainsLoadPromise = null;
+  });
   return villainsLoadPromise;
 }
 
-const MAX_ENEMIES = 6;
+export function getCharacterRoster() {
+  return allCharacters;
+}
+
+export function setPlayerCharacter(fileName) {
+  const character = allCharacters.find(entry => entry.fileName === fileName);
+  if (!character) {
+    throw new Error(`Unknown player character: ${fileName}`);
+  }
+
+  player.characterId = character.fileName;
+  player.characterName = character.name;
+  player.characterWalkSheet = character.walk;
+  player.characterAttackSheet = character.attack;
+  VILLAINS = allCharacters.filter(entry => entry.fileName !== character.fileName);
+  if (enemyRosterReady && enemyWorldInitialized) initEnemies(player);
+}
+
 const SPAWN_MARGIN_TILES = 2;
 const RECYCLE_MARGIN_TILES = 10;
-const MIN_SPAWN_DISTANCE = 3;
-const AGGRO_RANGE = 9.0;
-const RANGED_RANGE = 7.0;
-const GUARD_RADIUS = 4;
+const MIN_SPAWN_DISTANCE = 4;
+const AGGRO_RANGE = 7.0;
+const RANGED_RANGE = 5.0;
+const GUARD_RADIUS = 12;
 const STEP_SPEED = 0.32;
 const ATTACK_FRAME_TIME = 110;
 const DIE_FRAME_TIME = 180;
 const CORPSE_LINGER_TIME = 3.0;
 
 export const enemies = [];
+const DEFEATED_VILLAINS_KEY = "sprout-lands.defeated-villains.v1";
+export let defeatedVillainCount = loadDefeatedVillainCount();
 let spawnGeneration = 0;
+
+function loadDefeatedVillainCount() {
+  let saved;
+  try {
+    saved = localStorage.getItem(DEFEATED_VILLAINS_KEY);
+  } catch (error) {
+    console.error("Unable to load saved villain count.", error);
+    return 0;
+  }
+  if (saved === null) return 0;
+
+  const count = Number(saved);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    console.error("Saved villain count has an invalid format.");
+    return 0;
+  }
+  return count;
+}
+
+function saveDefeatedVillainCount() {
+  try {
+    localStorage.setItem(DEFEATED_VILLAINS_KEY, String(defeatedVillainCount));
+  } catch (error) {
+    console.error("Unable to save villain count.", error);
+  }
+}
 
 export function isSolidEnemyAt(tx, ty) {
   return enemies.some(e => {
@@ -170,6 +241,11 @@ function findNextPathDirection(enemy, targetX, targetY, player) {
   return null;
 }
 
+function playerOccupiesTile(player, x, y) {
+  return (player.tileX === x && player.tileY === y) ||
+    (player.isMoving && player.targetX === x && player.targetY === y);
+}
+
 function findBerryTarget(enemy) {
   let closest = null;
   for (let y = enemy.tileY - 6; y <= enemy.tileY + 6; y++) {
@@ -206,12 +282,13 @@ function findRangedPositionDirection(enemy, player) {
   return null;
 }
 
-function startEnemyStep(enemy, direction, state) {
+function startEnemyStep(enemy, direction, state, player) {
   if (direction === null) return false;
   const vector = DIR_VECTORS[direction];
   const targetX = enemy.tileX + vector.x;
   const targetY = enemy.tileY + vector.y;
-  if (isSolidEnemyAt(targetX, targetY) || !canStep(enemy.tileX, enemy.tileY, targetX, targetY, false)) return false;
+  if (playerOccupiesTile(player, targetX, targetY) || isSolidEnemyAt(targetX, targetY) ||
+      !canStep(enemy.tileX, enemy.tileY, targetX, targetY, false)) return false;
   enemy.state = state;
   enemy.dir = vector.dir;
   enemy.targetX = targetX;
@@ -225,12 +302,12 @@ function patrolEnemy(enemy, player, dt) {
   const homeDistance = Math.abs(enemy.tileX - enemy.guardX) + Math.abs(enemy.tileY - enemy.guardY);
   if (homeDistance > GUARD_RADIUS) {
     const direction = findNextPathDirection(enemy, enemy.guardX, enemy.guardY, player);
-    if (startEnemyStep(enemy, direction, "PATROL")) return;
+    if (startEnemyStep(enemy, direction, "PATROL", player)) return;
   }
 
   enemy.patrolTimer -= dt;
   if (enemy.patrolTimer > 0) return;
-  enemy.patrolTimer = 1.2 + Math.random() * 2.4;
+  enemy.patrolTimer = 0.1 + Math.random() * 0.5;
 
   const options = DIR_VECTORS
     .map((vector, dir) => ({ vector, dir, x: enemy.tileX + vector.x, y: enemy.tileY + vector.y }))
@@ -239,13 +316,14 @@ function patrolEnemy(enemy, player, dt) {
       !isSolidEnemyAt(option.x, option.y) &&
       canStep(enemy.tileX, enemy.tileY, option.x, option.y, false)
     );
-  if (options.length === 0 || Math.random() < 0.35) {
+  if (options.length === 0) {
     enemy.state = "IDLE";
+    enemy.patrolTimer = 0.3;
     return;
   }
 
   const option = options[Math.floor(Math.random() * options.length)];
-  startEnemyStep(enemy, option.dir, "PATROL");
+  startEnemyStep(enemy, option.dir, "PATROL", player);
 }
 
 function tryEatEnemyBerry(enemy) {
@@ -268,9 +346,11 @@ function tryEatEnemyBerry(enemy) {
 }
 
 export function createEnemy(tx, ty, variant = 0) {
+  const difficultyScale = 1 + (player.level - 1) * 0.15;
+  const maxHp = Math.round(60 * difficultyScale);
   return {
     variant,
-    fireballColor: VILLAINS[variant]?.fireballColor,
+    difficultyLevel: player.level,
     tileX: tx, tileY: ty,
     targetX: tx, targetY: ty,
     currentX: tx, currentY: ty,
@@ -279,9 +359,9 @@ export function createEnemy(tx, ty, variant = 0) {
     dir: DIR.DOWN,
     walkFrame: 0,
 
-    hp: 100,
-    maxHp: 100,
-    damage: 10,
+    hp: maxHp,
+    maxHp,
+    damage: Math.round(8 * (1 + (player.level - 1) * 0.08)),
     hasDealtDamage: false,
 
     state: "IDLE",
@@ -295,20 +375,18 @@ export function createEnemy(tx, ty, variant = 0) {
     corpseTimer: CORPSE_LINGER_TIME,
     guardX: tx,
     guardY: ty,
-    patrolTimer: 0.8 + Math.random() * 2,
+    patrolTimer: 0.1 + Math.random() * 0.5,
     entering: false,
     active: true
   };
 }
 
 export function initEnemies(player) {
+  enemyWorldInitialized = true;
   enemies.length = 0;
   spawnGeneration++;
 
-  const variants = Array.from(
-    { length: MAX_ENEMIES },
-    (_, index) => index % VILLAINS.length
-  );
+  const variants = Array.from({ length: VILLAINS.length }, (_, index) => index);
   for (let i = variants.length - 1; i > 0; i--) {
     const swapIndex = Math.floor(Math.random() * (i + 1));
     [variants[i], variants[swapIndex]] = [variants[swapIndex], variants[i]];
@@ -409,6 +487,14 @@ export function updateEnemies(dt, player, tryRangedAttack) {
 
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
+    if (e.difficultyLevel !== player.level) {
+      const healthRatio = e.maxHp > 0 ? e.hp / e.maxHp : 1;
+      const difficultyScale = 1 + (player.level - 1) * 0.15;
+      e.difficultyLevel = player.level;
+      e.maxHp = Math.round(60 * difficultyScale);
+      e.hp = Math.ceil(e.maxHp * healthRatio);
+      e.damage = Math.round(8 * (1 + (player.level - 1) * 0.08));
+    }
     e.hitFlashTimer = Math.max(0, e.hitFlashTimer - dt);
 
     if (e.state === "DEAD") {
@@ -467,7 +553,7 @@ export function updateEnemies(dt, player, tryRangedAttack) {
           e.state = "IDLE";
           e.attackFrame = 0;
           e.hasDealtDamage = false;
-          e.attackCooldown = 1.2;
+          e.attackCooldown = 1.6;
         }
       }
       continue;
@@ -500,7 +586,7 @@ export function updateEnemies(dt, player, tryRangedAttack) {
         e.entering = false;
       } else {
         const direction = findNextPathDirection(e, player.tileX, player.tileY, player);
-        if (startEnemyStep(e, direction, "CHASE")) continue;
+        if (startEnemyStep(e, direction, "CHASE", player)) continue;
       }
     }
 
@@ -517,6 +603,7 @@ export function updateEnemies(dt, player, tryRangedAttack) {
         e.dir = dy > 0 ? DIR.DOWN : DIR.UP;
       }
       e.state = "ATTACK";
+      playSound("sword");
       e.attackFrame = 0;
       e.attackClock = 0;
       e.hasDealtDamage = false;
@@ -531,7 +618,7 @@ export function updateEnemies(dt, player, tryRangedAttack) {
         e.attackFrame = 0;
         e.attackClock = 0;
         e.hasDealtDamage = true;
-        e.attackCooldown = 1.5;
+        e.attackCooldown = 2.2;
         continue;
       }
     }
@@ -546,13 +633,7 @@ export function updateEnemies(dt, player, tryRangedAttack) {
       if (berry) {
         const direction = findNextPathDirection(e, berry.x, berry.y, player);
         if (direction !== null) {
-          e.state = "HEAL";
-          e.dir = direction;
-          e.targetX = e.tileX + DIR_VECTORS[direction].x;
-          e.targetY = e.tileY + DIR_VECTORS[direction].y;
-          e.isMoving = true;
-          e.moveProgress = 0;
-          continue;
+          if (startEnemyStep(e, direction, "HEAL", player)) continue;
         }
       }
     }
@@ -564,7 +645,8 @@ export function updateEnemies(dt, player, tryRangedAttack) {
         const vector = DIR_VECTORS[dir];
         const x = e.tileX + vector.x;
         const y = e.tileY + vector.y;
-        if (!canStep(e.tileX, e.tileY, x, y, false) || isSolidEnemyAt(x, y)) continue;
+        if (playerOccupiesTile(player, x, y) ||
+            !canStep(e.tileX, e.tileY, x, y, false) || isSolidEnemyAt(x, y)) continue;
         const distance = Math.hypot(player.tileX - x, player.tileY - y);
         if (distance > bestDistance) {
           bestDistance = distance;
@@ -572,13 +654,7 @@ export function updateEnemies(dt, player, tryRangedAttack) {
         }
       }
       if (escapeDirection !== null) {
-        e.state = "FLEE";
-        e.dir = escapeDirection;
-        e.targetX = e.tileX + DIR_VECTORS[escapeDirection].x;
-        e.targetY = e.tileY + DIR_VECTORS[escapeDirection].y;
-        e.isMoving = true;
-        e.moveProgress = 0;
-        continue;
+        if (startEnemyStep(e, escapeDirection, "FLEE", player)) continue;
       }
     }
 
@@ -587,15 +663,16 @@ export function updateEnemies(dt, player, tryRangedAttack) {
       const inMeleeRange = meleeDistance === 1 && sameElevation;
       if (!inMeleeRange) {
         const meleeDirection = findNextPathDirection(e, player.tileX, player.tileY, player);
-        if (meleeDirection !== null && startEnemyStep(e, meleeDirection, "CHASE")) continue;
+        if (meleeDirection !== null && startEnemyStep(e, meleeDirection, "CHASE", player)) continue;
 
         if (tryRangedAttack && dist > 1.5) {
           const rangedDirection = findRangedPositionDirection(e, player);
-          if (rangedDirection !== null && startEnemyStep(e, rangedDirection, "SUPPORT")) continue;
+          if (rangedDirection !== null && startEnemyStep(e, rangedDirection, "SUPPORT", player)) continue;
         }
       }
 
       e.state = "IDLE";
+      patrolEnemy(e, player, dt);
     } else {
       patrolEnemy(e, player, dt);
     }
@@ -621,11 +698,13 @@ export function damageEnemy(enemy, damage) {
   if (enemy.hp <= 0) {
     enemy.hp = 0;
     enemy.state = "DYING";
+    defeatedVillainCount++;
+    saveDefeatedVillainCount();
     enemy.dieFrame = 0;
     enemy.dieClock = 0;
     enemy.isMoving = false;
 
-    addPlayerXP(35);
+    addPlayerXP(10);
 
     particles.push({
       x: (enemy.currentX + 0.5) * globals.tile,
@@ -633,7 +712,7 @@ export function damageEnemy(enemy, damage) {
       vy: -globals.tile * 1.8,
       life: 0.8,
       maxLife: 0.8,
-      text: "+35 XP",
+      text: "+10 XP",
       color: "#6effa6",
       stroke: "#00471c"
     });
@@ -660,7 +739,7 @@ export function checkPlayerAttackHit(player) {
                                       enemy.currentY - (player.currentY + dirVec.y * 0.8)) < 1.0;
 
     if (hitByTile || hitByProximity) {
-      damageEnemy(enemy, 20);
+      damageEnemy(enemy, player.swordDamage);
       break;
     }
   }

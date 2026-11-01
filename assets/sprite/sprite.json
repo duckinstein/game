@@ -1,0 +1,28 @@
+{
+  "characters": [
+    {
+      "name": "Lorna",
+      "fileName": "player"
+    },
+    {
+      "name": "Forest Guard",
+      "fileName": "1"
+    },
+    {
+      "name": "Shadow Warrior",
+      "fileName": "2"
+    },
+    {
+      "name": "Ember Mage",
+      "fileName": "3"
+    },
+    {
+      "name": "Moss Guardian",
+      "fileName": "4"
+    },
+    {
+      "name": "Crimson Knight",
+      "fileName": "5"
+    }
+  ]
+}

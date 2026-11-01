@@ -1,15 +1,18 @@
-import { globals, DIR, DIR_MAP, loadSheet } from './globals.js';
+import { globals, DIR, DIR_MAP } from './globals.js';
 import { isHighlandPlateau, isCliff, getTileElevation, isWaterTile } from './world.js';
 import { canStep, checkCoinPickup, consumeBerryAt, consumeMushroomAt, particles } from './props.js';
 import { updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
-
-export const walk = loadSheet("./assets/characters/player/walk.png");
-export const attack = loadSheet("./assets/characters/player/attack.png");
+import { playSound } from './audio.js';
 
 export const STEP_DURATION = 0.20;
 export const FOOT_OFFSET_Y = 1.0;
+const PLAYER_PROGRESS_KEY = "sprout-lands.player-progress.v1";
 
 export const player = {
+  characterId: "player",
+  characterName: "Lorna",
+  characterWalkSheet: null,
+  characterAttackSheet: null,
   tileX: 0, tileY: 0,
   targetX: 0, targetY: 0,
   currentX: 0, currentY: 0,
@@ -20,19 +23,82 @@ export const player = {
   attacking: false, attackFrame: 0, attackClock: 0,
   hasDealtDamage: false,
   initialized: false,
+  shieldTimer: 0,
 
-  hp: 200,
-  maxHp: 200,
-  mana: 100,
-  maxMana: 100,
-  manaRegenPerSecond: 12.5,
+  hp: 120,
+  maxHp: 120,
+  mana: 20,
+  maxMana: 20,
+  manaRegenPerSecond: 0.5,
+  walkSpeed: 5,
+  swordDamage: 30,
+  fireballDamage: 30,
   xp: 0,
   maxXp: 100,
   level: 1,
   invulnerableTimer: 0
 };
 
+let playerDeathHandler = null;
+
+function getXpForNextLevel(level) {
+  return 100 * 2 ** (level - 1);
+}
+
+function savePlayerProgress() {
+  try {
+    localStorage.setItem(PLAYER_PROGRESS_KEY, JSON.stringify({
+      level: player.level,
+      xp: player.xp
+    }));
+  } catch (error) {
+    console.error("Unable to save player progress.", error);
+  }
+}
+
+function loadPlayerProgress() {
+  let saved;
+  try {
+    saved = localStorage.getItem(PLAYER_PROGRESS_KEY);
+  } catch (error) {
+    console.error("Unable to load saved player progress.", error);
+    return;
+  }
+  if (saved === null) return;
+
+  let progress;
+  try {
+    progress = JSON.parse(saved);
+  } catch (error) {
+    console.error("Saved player progress is not valid JSON.", error);
+    return;
+  }
+
+  if (!Number.isSafeInteger(progress?.level) || progress.level < 1 ||
+      progress.level > 100 || !Number.isFinite(progress.xp) || progress.xp < 0) {
+    console.error("Saved player progress has an invalid format.");
+    return;
+  }
+
+  player.level = progress.level;
+  player.maxXp = getXpForNextLevel(player.level);
+  player.xp = Math.min(progress.xp, player.maxXp - 1);
+  player.maxHp = 120 + (player.level - 1) * 10;
+  player.hp = player.maxHp;
+}
+
+loadPlayerProgress();
+
 const activeDirs = [];
+
+export function setPlayerDeathHandler(handler) {
+  playerDeathHandler = handler;
+}
+
+export function losePlayerXP(amount) {
+  player.xp = Math.max(0, player.xp - amount);
+  savePlayerProgress();
+}
 
 export function pushDir(dir) {
   const idx = activeDirs.indexOf(dir);
@@ -70,7 +136,8 @@ export function getPlayerFootWorldPos() {
 }
 
 export function beginAttack() {
-  if (!attack.ready || player.attacking || player.isMoving) return false;
+  if (!player.characterAttackSheet?.ready || player.attacking || player.isMoving) return false;
+  playSound("sword");
   player.attacking = true;
   player.attackFrame = 0;
   player.attackClock = 0;
@@ -79,7 +146,7 @@ export function beginAttack() {
 }
 
 export function takePlayerDamage(amount) {
-  if (player.invulnerableTimer > 0) return;
+  if (player.hp <= 0 || player.invulnerableTimer > 0 || player.shieldTimer > 0) return;
   player.hp = Math.max(0, player.hp - amount);
   player.invulnerableTimer = 0.6;
   updatePlayerHUDHealth(player.hp, player.maxHp);
@@ -96,19 +163,17 @@ export function takePlayerDamage(amount) {
   });
 
   if (player.hp <= 0) {
-    particles.push({
-      x: (player.currentX + 0.5) * globals.tile,
-      y: (player.currentY - 0.3) * globals.tile,
-      vy: -globals.tile * 1.0,
-      life: 1.2,
-      maxLife: 1.2,
-      text: "REVIVED!",
-      color: "#ffd84d",
-      stroke: "#592f00"
-    });
-    player.hp = player.maxHp;
-    updatePlayerHUDHealth(player.hp, player.maxHp);
+    player.isMoving = false;
+    player.attacking = false;
+    clearInputs();
+    playerDeathHandler?.();
   }
+}
+
+export function activatePlayerShield() {
+  if (player.hp <= 0 || player.shieldTimer > 0 || !spendPlayerMana(1)) return false;
+  player.shieldTimer = 5;
+  return true;
 }
 
 export function spendPlayerMana(amount) {
@@ -119,12 +184,13 @@ export function spendPlayerMana(amount) {
 }
 
 export function addPlayerXP(amount) {
+  if (!Number.isFinite(amount) || amount <= 0) return;
   player.xp += amount;
-  if (player.xp >= player.maxXp) {
+  while (player.xp >= player.maxXp && player.level < 100) {
     player.xp -= player.maxXp;
     player.level++;
-    player.maxXp = Math.round(player.maxXp * 1.4);
-    player.maxHp += 20;
+    player.maxXp = getXpForNextLevel(player.level);
+    player.maxHp += 10;
     player.hp = player.maxHp;
     updatePlayerHUDHealth(player.hp, player.maxHp);
 
@@ -139,6 +205,7 @@ export function addPlayerXP(amount) {
       stroke: "#00451a"
     });
   }
+  savePlayerProgress();
 }
 
 function eatBerryAt(tx, ty) {
@@ -206,6 +273,8 @@ export function tryStartStep(dirName) {
 }
 
 export function updatePlayer(dt, onCoinPickupCallback, onAttackEndCallback, onAttackHitCallback) {
+  player.shieldTimer = Math.max(0, player.shieldTimer - dt);
+
   if (player.mana < player.maxMana) {
     player.mana = Math.min(player.maxMana, player.mana + player.manaRegenPerSecond * dt);
     updatePlayerHUDMana(player.mana, player.maxMana);
@@ -237,7 +306,7 @@ export function updatePlayer(dt, onCoinPickupCallback, onAttackEndCallback, onAt
 
   if (player.isMoving) {
     const inWater = isWaterTile(player.tileX, player.tileY) || isWaterTile(player.targetX, player.targetY);
-    player.moveProgress += dt / STEP_DURATION * (inWater ? 0.3 : 1);
+    player.moveProgress += dt * player.walkSpeed * (inWater ? 0.3 : 1);
     player.walkFrame = Math.floor(player.moveProgress * 4) % 4;
 
     if (player.moveProgress >= 1) {

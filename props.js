@@ -1,5 +1,8 @@
 import { globals, tryLoadImage } from './globals.js';
+import { playSound } from './audio.js';
 import { isHighlandPlateau, isCliff, isStairs, getTileElevation, getHighlandAt, isWaterTile } from './world.js';
+import { damageSheep, getSheepAtWorld } from './sheep.js';
+
 
 export const objectsSheet = {
   image: null,
@@ -123,12 +126,16 @@ export function getMapObjectAt(tx, ty) {
     const selectionRoll = objectTypeRoll(tx + 137, ty - 251);
     const typeName = typeKeys[Math.floor(selectionRoll * typeKeys.length)];
     const def = objectsSheet.types[typeName];
-    return { name: typeName, def, tx, ty, footY: ty + def.footOffsetY, key };
+    const object = { name: typeName, def, tx, ty, footY: ty + def.footOffsetY, key };
+    return getSheepAtWorld(tx + 0.5, ty + 0.5) ?? object;
   }
-  return null;
+  return getSheepAtWorld(tx + 0.5, ty + 0.5);
 }
 
 export function getMapObjectAtWorld(x, y, radius = 0) {
+  const sheep = getSheepAtWorld(x, y, radius);
+  if (sheep) return sheep;
+
   const tileX = Math.floor(x);
   const tileY = Math.floor(y);
 
@@ -152,6 +159,9 @@ export function damageMapObjectAt(x, y, radius = 0) {
   const object = getMapObjectAtWorld(x, y, radius);
   if (!object) return false;
 
+  if (object.name === "SHEEP") {
+    return damageSheep(object.sheepId);
+  }
   if (object.name.startsWith("TREE_")) {
     const stumpName = object.name === "TREE_TALL" ? "STUMP_1" : "STUMP_2";
     const stumpDef = objectsSheet.types[stumpName];
@@ -268,9 +278,22 @@ function saveCoinProgress() {
       coins: propState.coinsCollectedCount,
       collected: [...collectedCoins]
     }));
+    return true;
   } catch (error) {
     console.error("Unable to save coin progress.", error);
+    return false;
   }
+}
+
+export function spendCoins(amount) {
+  if (!Number.isSafeInteger(amount) || amount <= 0 || propState.coinsCollectedCount < amount) {
+    return false;
+  }
+
+  propState.coinsCollectedCount -= amount;
+  coinsCollectedCount = propState.coinsCollectedCount;
+  saveCoinProgress();
+  return true;
 }
 
 loadCoinProgress();
@@ -293,6 +316,7 @@ export function checkCoinPickup(tx, ty, updateHUDCallback) {
     propState.coinsCollectedCount++;
     coinsCollectedCount = propState.coinsCollectedCount;
     saveCoinProgress();
+    playSound("coin");
     if (updateHUDCallback) updateHUDCallback(propState.coinsCollectedCount);
 
     const elev = getTileElevation(tx, ty);

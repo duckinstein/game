@@ -45,3 +45,41 @@ export function removeLightBackground(imageData, width, height) {
     if (index + width < width * height) addPixel(index + width);
   }
 }
+
+export function removeDarkBackground(imageData, width, height) {
+  const { data } = imageData;
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+
+  function addPixel(index) {
+    if (visited[index]) return;
+    const offset = index * 4;
+    if (Math.max(data[offset], data[offset + 1], data[offset + 2]) > 48) return;
+    visited[index] = 1;
+    queue[tail++] = index;
+  }
+
+  for (let x = 0; x < width; x++) {
+    addPixel(x);
+    addPixel((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y++) {
+    addPixel(y * width);
+    addPixel(y * width + width - 1);
+  }
+  addPixel(Math.floor(height / 2) * width + Math.floor(width / 2));
+
+  while (head < tail) {
+    const index = queue[head++];
+    const offset = index * 4;
+    data[offset + 3] = 0;
+
+    const x = index % width;
+    if (x > 0) addPixel(index - 1);
+    if (x + 1 < width) addPixel(index + 1);
+    if (index >= width) addPixel(index - width);
+    if (index + width < width * height) addPixel(index + width);
+  }
+}
