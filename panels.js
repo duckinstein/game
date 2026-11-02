@@ -117,7 +117,64 @@ function buildRoster() {
       !roster.some(character => character.id === shopProgress.selected)) {
     shopProgress.selected = "player";
   }
+  renderCharacterGrid();
   selectCharacter(shopProgress.selected);
+}
+
+function renderCharacterGrid() {
+  const grid = document.getElementById("character-grid");
+  grid.replaceChildren();
+
+  roster.forEach((character, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "character-option";
+    option.setAttribute("aria-pressed", "false");
+
+    const thumbnail = document.createElement("canvas");
+    thumbnail.width = 64;
+    thumbnail.height = 64;
+    thumbnail.setAttribute("aria-hidden", "true");
+    const context = thumbnail.getContext("2d");
+    if (context && character.walk?.ready && character.walk.image) {
+      context.imageSmoothingEnabled = false;
+      const scale = Math.min(56 / character.walk.fw, 56 / character.walk.fh);
+      const width = character.walk.fw * scale;
+      const height = character.walk.fh * scale;
+      context.drawImage(
+        character.walk.image,
+        0, 0, character.walk.fw, character.walk.fh,
+        (thumbnail.width - width) / 2,
+        thumbnail.height - height,
+        width,
+        height
+      );
+    }
+
+    const name = document.createElement("span");
+    name.textContent = character.name;
+    option.append(thumbnail, name);
+    option.addEventListener("click", () => {
+      selectedIndex = index;
+      refreshShop();
+    });
+    grid.append(option);
+  });
+  updateCharacterGridSelection();
+}
+
+function updateCharacterGridSelection() {
+  const options = document.getElementById("character-grid").children;
+  for (let index = 0; index < options.length; index++) {
+    const option = options[index];
+    const character = roster[index];
+    const isActive = index === selectedIndex;
+    const isEquipped = character.id === shopProgress.selected;
+    option.classList.toggle("is-active", isActive);
+    option.classList.toggle("is-equipped", isEquipped);
+    option.setAttribute("aria-pressed", String(isActive));
+    option.setAttribute("aria-label", `${character.name}${isEquipped ? ", currently in use" : ""}`);
+  }
 }
 
 function updateAccountStats() {
@@ -237,6 +294,7 @@ function refreshShop() {
   document.getElementById("shop-message").textContent = "Choose a character or improve your stats.";
   document.getElementById("character-previous").disabled = roster.length < 2;
   document.getElementById("character-next").disabled = roster.length < 2;
+  updateCharacterGridSelection();
   updateUpgradeCards();
   updateAccountStats();
   previewStartTime = performance.now();

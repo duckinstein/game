@@ -1,6 +1,6 @@
 import { globals } from './globals.js';
 import { grassSheet, hillsSheet, waterSheet, resolveHillTile, getGrassVariation, getGrassDecor, getPondAt, getWaterDecor, isWaterTile, getTileElevation } from './world.js';
-import { objectsSheet, objectSprites, pondDecorSprites, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
+import { objectsSheet, objectSprites, pondDecorSprites, coinSheet, getSceneryObjectAt, hasCoinAt, particles, propState } from './props.js';
 import { player, FOOT_OFFSET_Y, pushDir, removeDir, beginAttack, activatePlayerShield, updatePlayer, getPlayerFootWorldPos, clearInputs, losePlayerXP, setPlayerDeathHandler } from './player.js';
 import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit, loadCharacterRoster } from './enemies.js';
 import { fireballs, launchFireball, canFireballReach, updateFireballs, drawFireballVisuals, clearFireballs } from './fireballs.js';
@@ -19,6 +19,8 @@ const fireballButton = document.getElementById("fireball");
 const shieldButton = document.getElementById("shield");
 const coinCounterEl = document.getElementById("coin-count");
 const gameOverDialog = document.getElementById("game-over-panel");
+const titleScreen = document.getElementById("title-screen");
+const playButton = document.getElementById("play-game");
 document.addEventListener("contextmenu", event => event.preventDefault());
 document.addEventListener("dragstart", event => event.preventDefault());
 let shieldImage = null;
@@ -52,6 +54,7 @@ let lastTime = performance.now();
 let villainsLoaded = false;
 let enemiesInitialized = false;
 let gameOver = false;
+let gameStarted = false;
 let dayCycleTime = 0;
 
 function handlePlayerDeath() {
@@ -474,30 +477,31 @@ function draw(now) {
   const renderQueue = [];
   const visibleSheep = getSheepInBounds(minCol - 2, maxCol + 2, minRow - 2, maxRow + 2);
 
-  // 1. Add Player
-  const playerFoot = getPlayerFootWorldPos();
-  renderQueue.push({
-    type: "PLAYER",
-    footY: player.currentY + FOOT_OFFSET_Y,
-    draw: () => {
-      const screenX = playerFoot.x - globals.cameraX;
-      const screenY = playerFoot.y - globals.cameraY;
+  if (gameStarted) {
+    const playerFoot = getPlayerFootWorldPos();
+    renderQueue.push({
+      type: "PLAYER",
+      footY: player.currentY + FOOT_OFFSET_Y,
+      draw: () => {
+        const screenX = playerFoot.x - globals.cameraX;
+        const screenY = playerFoot.y - globals.cameraY;
 
-      const characterAttack = player.characterAttackSheet;
-      const characterWalk = player.characterWalkSheet;
-      if (player.attacking && characterAttack?.ready) {
-        drawPlayerSprite(characterAttack, player.attackFrame, player.dir, screenX, screenY);
-      } else {
-        drawPlayerSprite(characterWalk, player.isMoving ? player.walkFrame : 0, player.dir, screenX, screenY);
+        const characterAttack = player.characterAttackSheet;
+        const characterWalk = player.characterWalkSheet;
+        if (player.attacking && characterAttack?.ready) {
+          drawPlayerSprite(characterAttack, player.attackFrame, player.dir, screenX, screenY);
+        } else {
+          drawPlayerSprite(characterWalk, player.isMoving ? player.walkFrame : 0, player.dir, screenX, screenY);
+        }
+        drawPlayerShield(screenX, screenY);
       }
-      drawPlayerShield(screenX, screenY);
-    }
-  });
+    });
+  }
 
   // 2. Add Map Objects
   for (let r = minRow - 2; r <= maxRow + 2; r++) {
     for (let c = minCol - 2; c <= maxCol + 2; c++) {
-      const obj = getMapObjectAt(c, r);
+      const obj = getSceneryObjectAt(c, r);
       if (obj && obj.name !== "SHEEP") {
         renderQueue.push({
           type: "OBJECT",
@@ -517,21 +521,23 @@ function draw(now) {
   }
 
   // 3. Add Enemies
-  for (const enemy of enemies) {
-    if (!enemy.active) continue;
-    renderQueue.push({
-      type: "ENEMY",
-      footY: enemy.currentY + 1.0,
-      draw: () => drawEnemy(ctx, enemy)
-    });
+  if (gameStarted) {
+    for (const enemy of enemies) {
+      if (!enemy.active) continue;
+      renderQueue.push({
+        type: "ENEMY",
+        footY: enemy.currentY + 1.0,
+        draw: () => drawEnemy(ctx, enemy)
+      });
+    }
   }
 
   renderQueue.sort((a, b) => a.footY - b.footY);
   for (const item of renderQueue) item.draw();
-  drawFireballVisuals(ctx);
+  if (gameStarted) drawFireballVisuals(ctx);
 
   // Floating Combat & Reward Particles
-  if (particles.length > 0) {
+  if (gameStarted && particles.length > 0) {
     ctx.save();
     for (const p of particles) {
       const alpha = Math.max(0, p.life / p.maxLife);
@@ -566,7 +572,7 @@ function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
-  if (!document.querySelector("dialog[open]")) {
+  if (gameStarted && !document.querySelector("dialog[open]")) {
     update(dt);
     dayCycleTime += dt * 1000;
   }
@@ -582,7 +588,7 @@ function keyDirection(code) {
 }
 
 window.addEventListener("keydown", e => {
-  if (document.querySelector("dialog[open]")) return;
+  if (!gameStarted || document.querySelector("dialog[open]")) return;
   const dir = keyDirection(e.code);
   if (dir) { pushDir(dir); e.preventDefault(); }
   if ((e.code === "Space" || e.code === "Enter") && !e.repeat) {
@@ -667,6 +673,12 @@ if (shieldButton) {
 }
 
 initializePanels();
+
+playButton.addEventListener("click", () => {
+  gameStarted = true;
+  document.body.classList.remove("is-home");
+  titleScreen.hidden = true;
+});
 
 function startGame() {
   resize();

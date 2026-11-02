@@ -5,6 +5,7 @@ export const uiSheet = { ready: false, frames: {} };
 export const playerHealthSheet = { ready: false, frames: [], canvas: null };
 export const enemyHealthSheet = { ready: false, frames: [], canvas: null };
 let playerManaHud = { current: 100, max: 100 };
+const resourceRenderKeys = new WeakMap();
 
 // --- 2. FLOOD-FILL BACKGROUND REMOVAL & AUTOTRIM ---
 function processOffscreenCanvas(img) {
@@ -204,13 +205,7 @@ export function updatePlayerHUDMana(currentMana, maxMana) {
 function drawPlayerResourceBar(canvasId, current, max, blueTint) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
   const ratio = Math.max(0, Math.min(1, current / max));
-
-  // 6 Stages from 100% to 0%
   let stage = 0;
   if (ratio >= 0.85)      stage = 0;
   else if (ratio >= 0.65) stage = 1;
@@ -219,7 +214,18 @@ function drawPlayerResourceBar(canvasId, current, max, blueTint) {
   else if (ratio > 0.05)  stage = 4;
   else                    stage = 5;
 
-  if (playerHealthSheet.ready && playerHealthSheet.frames[stage]) {
+  const useSprite = playerHealthSheet.ready && Boolean(playerHealthSheet.frames[stage]);
+  const fallbackSegments = Math.round(ratio * 5);
+  const renderKey = useSprite
+    ? `sprite:${blueTint}:${stage}`
+    : `fallback:${blueTint}:${fallbackSegments}:${ratio > 0.2}`;
+  if (resourceRenderKeys.get(canvas) === renderKey) return;
+
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (useSprite) {
     const f = playerHealthSheet.frames[stage];
     const scale = Math.min(canvas.width / f.sw, canvas.height / f.sh);
     const destW = Math.round(f.sw * scale);
@@ -231,6 +237,7 @@ function drawPlayerResourceBar(canvasId, current, max, blueTint) {
     if (blueTint) ctx.filter = "hue-rotate(190deg) saturate(1.5)";
     ctx.drawImage(playerHealthSheet.canvas, f.sx, f.sy, f.sw, f.sh, destX, destY, destW, destH);
     ctx.restore();
+    resourceRenderKeys.set(canvas, renderKey);
     return;
   }
 
@@ -253,7 +260,7 @@ function drawPlayerResourceBar(canvasId, current, max, blueTint) {
 
   const segments = 5;
   const segW = Math.floor((barW - (segments - 1) * 2) / segments);
-  const activeSegs = Math.round(ratio * segments);
+  const activeSegs = fallbackSegments;
 
   for (let s = 0; s < segments; s++) {
     const sx = barX + s * (segW + 2);
@@ -264,6 +271,7 @@ function drawPlayerResourceBar(canvasId, current, max, blueTint) {
       ctx.fillRect(sx, barY, segW, 3);
     }
   }
+  resourceRenderKeys.set(canvas, renderKey);
 }
 
 // --- 8. ENEMY HEALTH BAR (11 Stages, Zero Clipping) ---

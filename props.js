@@ -209,6 +209,10 @@ export function getMapObjectAt(tx, ty) {
   return getSheepAtWorld(tx + 0.5, ty + 0.5);
 }
 
+export function getSceneryObjectAt(tx, ty) {
+  return getGeneratedMapObjectAt(tx, ty);
+}
+
 export function getMapObjectAtWorld(x, y, radius = 0) {
   const sheep = getSheepAtWorld(x, y, radius);
   if (sheep) return sheep;
@@ -375,14 +379,15 @@ export function spendCoins(amount) {
 loadCoinProgress();
 
 export function hasCoinAt(tx, ty) {
-  if (isCliff(tx, ty) || isStairs(tx, ty) || isWaterTile(tx, ty) || hasObjectCollision(tx, ty)) return false;
   const key = `${tx},${ty}`;
   if (collectedCoins.has(key)) return false;
 
   const hVal = Math.sin(tx * 91.13 + ty * 23.47) * 43758.5453;
   const rand = hVal - Math.floor(hVal);
-  if (isHighlandPlateau(tx, ty)) return rand < 0.08;
-  return rand < 0.03;
+  const isHighland = isHighlandPlateau(tx, ty);
+  if (rand >= (isHighland ? 0.08 : 0.03)) return false;
+  return !isCliff(tx, ty) && !isStairs(tx, ty) &&
+    !isWaterTile(tx, ty) && !hasObjectCollision(tx, ty);
 }
 
 export function checkCoinPickup(tx, ty, updateHUDCallback) {
