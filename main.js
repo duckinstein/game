@@ -2,7 +2,7 @@ import { globals } from './globals.js';
 import { grassSheet, hillsSheet, waterSheet, resolveHillTile, getGrassVariation, getGrassDecor, getPondAt, getWaterDecor, isWaterTile, getTileElevation } from './world.js';
 import { objectsSheet, objectSprites, pondDecorSprites, coinSheet, getMapObjectAt, hasCoinAt, particles, propState } from './props.js';
 import { player, FOOT_OFFSET_Y, pushDir, removeDir, beginAttack, activatePlayerShield, updatePlayer, getPlayerFootWorldPos, clearInputs, losePlayerXP, setPlayerDeathHandler } from './player.js';
-import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit, loadVillains } from './enemies.js';
+import { enemies, initEnemies, updateEnemies, drawEnemy, checkPlayerAttackHit, loadCharacterRoster } from './enemies.js';
 import { fireballs, launchFireball, canFireballReach, updateFireballs, drawFireballVisuals, clearFireballs } from './fireballs.js';
 import { drawSheep, getSheepInBounds, updateSheep } from './sheep.js';
 import { updateUIElements, updatePlayerHUDHealth, updatePlayerHUDMana } from './ui.js';
@@ -672,7 +672,7 @@ function startGame() {
   resize();
   requestAnimationFrame(loop);
 
-  loadVillains().then(() => {
+  loadCharacterRoster().then(() => {
     villainsLoaded = true;
     initializeCharacterRoster();
     if (!enemiesInitialized) {

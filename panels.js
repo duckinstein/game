@@ -1,11 +1,14 @@
 import { player, clearInputs } from "./player.js";
-import { defeatedVillainCount, getCharacterRoster, loadVillains, setPlayerCharacter } from "./enemies.js";
+import { defeatedVillainCount, getCharacterRoster, loadCharacterRoster, setPlayerCharacter } from "./enemies.js";
 import { propState, spendCoins } from "./props.js";
 import { setAudioVolume } from "./audio.js";
 import { getTimeMode, setTimeMode } from "./time-of-day.js";
 
 const SHOP_SAVE_KEY = "sprout-lands.shop-progress.v1";
 const MAX_UPGRADE_LEVEL = 5;
+const isValidCharacterId = id => typeof id === "string" &&
+  /^(?:villain:)?[a-zA-Z0-9_-]+$/.test(id);
+const normalizeCharacterId = id => id.startsWith("villain:") ? id.slice("villain:".length) : id;
 const UPGRADE_DEFINITIONS = {
   fireball: { base: 30, step: 10, label: "Fireball damage", unit: "damage" },
   sword: { base: 30, step: 10, label: "Sword damage", unit: "damage" }
@@ -51,21 +54,21 @@ function loadShopProgress() {
     skillLevels = { player: { fireball: progress.upgrades.fireball, sword: progress.upgrades.sword } };
   }
   if (!Array.isArray(progress?.unlocked) ||
-      !progress.unlocked.every(id => typeof id === "string" && /^(player|villain:[a-zA-Z0-9_-]+)$/.test(id)) ||
-      typeof progress.selected !== "string" ||
+      !progress.unlocked.every(isValidCharacterId) ||
+      !isValidCharacterId(progress.selected) ||
       !skillLevels || typeof skillLevels !== "object" || Array.isArray(skillLevels) ||
       !Object.entries(skillLevels).every(([id, levels]) =>
-        /^(player|villain:[a-zA-Z0-9_-]+)$/.test(id) && validSkillLevels(levels))) {
+        isValidCharacterId(id) && validSkillLevels(levels))) {
     console.error("Saved shop progress has an invalid format.");
     return;
   }
 
-  shopProgress.unlocked = new Set(["player", ...progress.unlocked]);
-  shopProgress.selected = progress.selected;
+  shopProgress.unlocked = new Set(["player", ...progress.unlocked.map(normalizeCharacterId)]);
+  shopProgress.selected = normalizeCharacterId(progress.selected);
   shopProgress.skillLevels = {
     player: { fireball: 0, sword: 0 },
     ...Object.fromEntries(Object.entries(skillLevels).map(([id, levels]) => [
-      id,
+      normalizeCharacterId(id),
       { fireball: levels.fireball, sword: levels.sword }
     ]))
   };
@@ -100,7 +103,7 @@ function applyUpgrades() {
 
 function buildRoster() {
   roster = getCharacterRoster().map(character => ({
-    id: character.fileName === "player" ? "player" : `villain:${character.fileName}`,
+    id: character.fileName,
     fileName: character.fileName,
     name: character.name,
     kind: "Character",
@@ -385,7 +388,7 @@ function initializePauseMenu() {
 
 function openShop() {
   document.getElementById("shop-message").textContent = "Loading characters...";
-  loadVillains().then(() => {
+  loadCharacterRoster().then(() => {
     buildRoster();
     selectedIndex = Math.max(0, roster.findIndex(character => character.id === shopProgress.selected));
     refreshShop();

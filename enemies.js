@@ -45,15 +45,15 @@ function loadCharacterSheet(path, cols, rows) {
 
 let VILLAINS = [];
 let allCharacters = [];
-let villainDefinitions = null;
-let villainManifestPromise = null;
-let villainsLoadPromise = null;
+let characterDefinitions = null;
+let characterCatalogPromise = null;
+let characterRosterPromise = null;
 let enemyRosterReady = false;
 let enemyWorldInitialized = false;
 
-function loadVillainDefinitions() {
-  if (villainManifestPromise) return villainManifestPromise;
-  villainManifestPromise = (async () => {
+function loadCharacterDefinitions() {
+  if (characterCatalogPromise) return characterCatalogPromise;
+  characterCatalogPromise = (async () => {
     const response = await fetch(new URL("./assets/sprite/sprite.json", import.meta.url));
     if (!response.ok) {
       throw new Error(`Unable to load character roster: ${response.status} ${response.statusText}`);
@@ -65,7 +65,7 @@ function loadVillainDefinitions() {
     }
 
     const fileNames = new Set();
-    villainDefinitions = roster.characters.map(entry => {
+    characterDefinitions = roster.characters.map(entry => {
       if (typeof entry.fileName !== "string" ||
           !/^[a-zA-Z0-9_-]+$/.test(entry.fileName) ||
           fileNames.has(entry.fileName) ||
@@ -77,10 +77,10 @@ function loadVillainDefinitions() {
       return { fileName: entry.fileName, name: entry.name.trim() };
     });
   })();
-  villainManifestPromise.catch(() => {
-    villainManifestPromise = null;
+  characterCatalogPromise.catch(() => {
+    characterCatalogPromise = null;
   });
-  return villainManifestPromise;
+  return characterCatalogPromise;
 }
 
 async function loadCharacter(entry) {
@@ -96,12 +96,12 @@ async function loadCharacter(entry) {
   return { ...entry, walk, attack, die };
 }
 
-export function loadVillains() {
-  if (villainsLoadPromise) return villainsLoadPromise;
-  villainsLoadPromise = (async () => {
-    await loadVillainDefinitions();
+export function loadCharacterRoster() {
+  if (characterRosterPromise) return characterRosterPromise;
+  characterRosterPromise = (async () => {
+    await loadCharacterDefinitions();
     const loadedCharacters = [];
-    for (const entry of villainDefinitions) {
+    for (const entry of characterDefinitions) {
       loadedCharacters.push(await loadCharacter(entry));
     }
     allCharacters = loadedCharacters;
@@ -109,10 +109,10 @@ export function loadVillains() {
     enemyRosterReady = true;
     if (enemyWorldInitialized) initEnemies(player);
   })();
-  villainsLoadPromise.catch(() => {
-    villainsLoadPromise = null;
+  characterRosterPromise.catch(() => {
+    characterRosterPromise = null;
   });
-  return villainsLoadPromise;
+  return characterRosterPromise;
 }
 
 export function getCharacterRoster() {
