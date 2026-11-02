@@ -19,6 +19,10 @@
     {
     "fileName": "5",
       "fireballColor": "#ff0000"
+    },
+    {
+    "fileName": "6",
+      "fireballColor": "#ff0000"
     }
   ]
 }
